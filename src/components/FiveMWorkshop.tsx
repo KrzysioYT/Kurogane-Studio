@@ -2,8 +2,9 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { CLASSES, DEFAULTS, HANDLING_DEFINITIONS, PLATES, WHEELS } from '../fivem/types';
-import type { Check, VehicleConfig, ImportedAssets } from '../fivem/types';
+import type { Check, VehicleConfig } from '../fivem/types';
 import { createAddonZip, generatedMetas, inferConfig, readAssets, validate } from '../fivem/builder';
+import type { ImportedAssets } from '../fivem/builder';
 import { fxManifest, vehicleNamesLua } from '../fivem/templates';
 
 type Page = 'identity'|'physics'|'files'|'code';
