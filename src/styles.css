@@ -31,3 +31,13 @@
 .header-actions{justify-content:flex-end;white-space:normal}
 .viewport-options{flex-wrap:wrap;justify-content:flex-end}
 @media(max-width:1700px){.top-crumbs{display:none}.topbar{gap:14px}.brand{min-width:190px}}
+
+/* Kurogane Studio v0.12: projected vehicle emblems */
+.decal-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:10px;background:#182d39;border:1px solid #38586a;border-radius:7px;padding:9px 12px}
+.decal-toolbar button{background:#234554;color:#cceaf2;border:1px solid #558494;border-radius:5px;padding:9px 11px;cursor:pointer;font-size:11px}
+.decal-toolbar button:hover{background:#346476}
+.decal-toolbar label{display:flex;align-items:center;gap:6px;font-size:11px;color:#a8c5d0}
+.decal-toolbar input[type=number]{width:74px;background:#14232e;border:1px solid #436276;color:#e8f5f5;border-radius:4px;padding:6px}
+.decal-toolbar input[type=range]{width:80px;accent-color:#72bac9}
+.decal-toolbar span{color:#8aabb6;font-size:10px;margin-left:auto}
+@media(max-width:1020px){.decal-toolbar span{margin-left:0;width:100%}}
