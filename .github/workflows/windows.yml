@@ -1,7 +1,7 @@
 name: Windows build
 on:
   push:
-    branches: [main, feat/windows-3d-editor-mvp, feat/fivem-vehicle-addon-builder, feat/rpf-to-fivem, feat/zip-addon-project-editor, feat/native-ytd-livery-workbench, feat/yft-3d-inspector]
+    branches: [main, feat/windows-3d-editor-mvp, feat/fivem-vehicle-addon-builder, feat/rpf-to-fivem, feat/zip-addon-project-editor, feat/native-ytd-livery-workbench, feat/yft-3d-inspector, feat/uv-livery-preview]
   pull_request:
     branches: [main]
   workflow_dispatch:
