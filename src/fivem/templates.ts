@@ -71,7 +71,7 @@ export function handlingXML(c: VehicleConfig): string {
     field('fDownforceModifier',1),field('fPercentSubmerged',85),
     '      <vecCentreOfMassOffset x="0.000000" y="0.000000" z="-0.050000" />',
     '      <vecInertiaMultiplier x="1.000000" y="1.100000" z="1.200000" />',
-    field('fDriveBiasFront',0),valueTag('nInitialDriveGears',c.handlingValues.gears),
+    field('fDriveBiasFront',0),'      <nInitialDriveGears value="' + String(c.handlingValues.gears) + '" />',
     field('fInitialDriveForce',.32),field('fDriveInertia',1),
     field('fClutchChangeRateScaleUpShift',2.5),
     field('fClutchChangeRateScaleDownShift',2),
