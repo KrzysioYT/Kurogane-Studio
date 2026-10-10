@@ -1,5 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import Viewport from './Viewport';
 import { clearModel } from '../lib/demo';
@@ -8,7 +8,7 @@ import type { VehicleAsset } from '../fivem/types';
 import './YftInspector.css';
 
 type MeshData={name:string;vertices:number[];normals:number[];uv:number[];indices:number[];shaderId:number;suggestedTexture?:string|null};
-type Props={files:VehicleAsset[];onUpdateYft?:(name:string,bytes:Uint8Array)=>void};
+type Props={files:VehicleAsset[];onUpdateYft?:(name:string,bytes:Uint8Array)=>void;onDirtyChange?:(dirty:boolean)=>void};
 type Patch={meshIndex:number;vertexIndex:number;x:number;y:number;z:number};
 type TextureEntry={name:string;width:number;height:number;format:string;levels:number};
 function fromMeshes(data:MeshData[],root:THREE.Group){
@@ -32,7 +32,7 @@ function fromMeshes(data:MeshData[],root:THREE.Group){
    root.add(mesh);
  }
 }
-export default function YftInspector({files,onUpdateYft}:Props){
+export default function YftInspector({files,onUpdateYft,onDirtyChange}:Props){
  const [filename,setFilename]=useState('');
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState('Wybierz plik YFT z importowanego addonu.');
@@ -53,7 +53,9 @@ export default function YftInspector({files,onUpdateYft}:Props){
  const root=useMemo(()=>new THREE.Group(),[]);
  const choices=files.filter(f=>f.name.toLowerCase().endsWith('.yft')&&!f.name.toLowerCase().endsWith('_hi.yft'));
  const ytdFiles=files.filter(f=>f.name.toLowerCase().endsWith('.ytd'));
+ useEffect(()=>{onDirtyChange?.(edited);},[edited,onDirtyChange]);
  const load=async(name:string)=>{
+   if(edited&&!window.confirm('Masz niezapisane zmiany geometrii YFT. Porzucić je?'))return;
    const oldTextures=new Set<THREE.Texture>();
    for(const object of root.children){
      if(object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial && object.material.map)
@@ -192,9 +194,9 @@ export default function YftInspector({files,onUpdateYft}:Props){
      if(!patches.length){setEdited(false);setMessage('Brak zmienionych wierzchołków do zapisania.');return;}
      const bytes=await invoke<number[]>('yft_patch_vertices',{bytes:Array.from(source.bytes),patches});
      const updated=Uint8Array.from(bytes);
-     onUpdateYft(filename,updated);
      const verified=await invoke<MeshData[]>('yft_preview',{bytes:Array.from(updated)});
      if(verified.length!==originalMeshes.current.length)throw new Error('Zmiana YFT nie przechodzi walidacji geometrii.');
+     onUpdateYft(filename,updated);
      originalMeshes.current=verified;setEdited(false);
      setMessage('Eksperymentalny YFT zapisany do projektu ('+patches.length+' zmian). Obowiązkowy test na serwerze FiveM przed wdrożeniem.');
    }catch(e){setMessage('Eksport YFT zablokowany: '+String(e));}
