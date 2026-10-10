@@ -13,7 +13,7 @@ import ModelingPanel from './components/ModelingPanel';
 import {SceneHistory} from './lib/history';
 import {decodeProject,saveProject} from './lib/project';
 import {moveVertex} from './lib/modeling';
-import {createLogoDecal,loadLogoImage} from './lib/decal';
+import {createLogoDecal,loadLogoImage,createTextLogoTexture} from './lib/decal';
 import {auditScene} from './lib/model-audit';
 import type {AuditReport} from './lib/model-audit';
 import type { PrimitiveKind } from './lib/geometry';
@@ -64,6 +64,8 @@ export default function App() {
   const [logoSize,setLogoSize]=useState(.65);
   const [logoRotation,setLogoRotation]=useState(0);
   const [logoOpacity,setLogoOpacity]=useState(1);
+  const [logoText,setLogoText]=useState('LSPD');
+  const [textColor,setTextColor]=useState('#ffffff');
   const [auditResult,setAuditResult]=useState<{report:AuditReport;revision:number}|null>(null);
   const [revision, setRevision] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -244,6 +246,14 @@ export default function App() {
     }catch(error){setStatus('Nie można wczytać logo: '+String(error));}
     finally{setBusy(false);}
   };
+  const makeTextMarking=()=>{
+    try{
+      const texture=createTextLogoTexture(logoText,textColor);
+      setLogoTexture(texture);setLogoMode(true);
+      setFaceMode(false);setVertexMode(false);setFaces([]);setVertexIndex(null);
+      setStatus('Napis gotowy. Kliknij część karoserii w 3D, aby umieścić oznaczenie.');
+    }catch(error){setStatus('Błąd oznaczenia: '+String(error));}
+  };
   const placeLogo=(mesh:THREE.Mesh,point:THREE.Vector3,normal:THREE.Vector3)=>{
     if(!logoTexture){setStatus('Najpierw wczytaj logo PNG/JPG.');return;}
     if(!checkpoint('Dodano logo 3D'))return;
@@ -341,7 +351,7 @@ export default function App() {
   return <div className="shell" onDragOver={event => { event.preventDefault(); setDragActive(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragActive(false); }} onDrop={onDrop}>
     <header className={fiveMMode ? "topbar fivem-topbar" : "topbar"}>
       <Brand />
-      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.14.0</span></div>
+      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.15.0</span></div>
       <div className="header-actions">
         <button className={"button workspace-toggle " + (fiveMMode ? "current" : "")} onClick={() => {setWorkshopOpened(true);setFiveMMode(current => !current);}}>{fiveMMode ? "← Edytor 3D" : "🚘 FiveM Add-on"}</button>
         <button className="button ghost" onClick={newWorkspace} disabled={busy}>Nowa scena</button>
@@ -437,6 +447,9 @@ export default function App() {
             <input hidden type="file" ref={logoRef} accept="image/png,image/jpeg,image/webp" onChange={e=>{
               const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(file)void importLogo(file);
             }}/>
+            <label>Oznaczenie <input type="text" aria-label="Tekst oznaczenia" maxLength={100} value={logoText} onChange={e=>setLogoText(e.target.value)} placeholder="LSPD / 108"/></label>
+            <label>Kolor <input type="color" aria-label="Kolor napisu" value={textColor} onChange={e=>setTextColor(e.target.value)}/></label>
+            <button onClick={makeTextMarking}>Tłoczony napis 3D</button>
             <label>Szerokość (m) <input type="number" min=".025" max="10" step=".05" value={logoSize} onChange={e=>setLogoSize(Number(e.target.value))}/></label>
             <label>Obrót (°) <input type="number" min="-3600" max="3600" step="15" value={logoRotation} onChange={e=>setLogoRotation(Number(e.target.value))}/></label>
             <label>Krycie (%) <input type="range" min="5" max="100" step="5" value={logoOpacity*100} onChange={e=>setLogoOpacity(Number(e.target.value)/100)}/></label>
@@ -524,7 +537,7 @@ export default function App() {
         <div className="inspector-note"><div className="section-title">INFORMACJE</div><div className="stat-row"><span>Elementy 3D</span><strong>{meshes}</strong></div><div className="stat-row"><span>Format wyjścia</span><strong>GLB</strong></div><div className="stat-row"><span>Format GTA V</span><strong className="warning">W planie</strong></div></div>
       </aside>
     </div>
-    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.14.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
+    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.15.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
   </div>;
 }
 
