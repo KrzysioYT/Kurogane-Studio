@@ -6,7 +6,10 @@ import { CLASSES, DEFAULTS, HANDLING_DEFINITIONS, PLATES, WHEELS } from '../five
 import type { Check, VehicleConfig } from '../fivem/types';
 import { createAddonZip, generatedMetas, inferConfig, readAssets, validate } from '../fivem/builder';
 import type { ImportedAssets } from '../fivem/builder';
-import { fxManifest, vehicleNamesLua } from '../fivem/templates';
+import { vehicleNamesLua } from '../fivem/templates';
+import { mergeVehicleManifest } from '../fivem/manifest';
+import { readText, textEditable, updateFileText } from '../fivem/zip-project';
+import type { VehicleAsset } from '../fivem/types';
 import { pickRpfArchive } from '../fivem/rpf';
 
 type Page = 'identity'|'physics'|'files'|'code';
@@ -50,6 +53,11 @@ export default function FiveMWorkshop(){
  const [drop,setDrop]=useState(false);
  const [codeFile,setCodeFile]=useState('fxmanifest.lua');
  const [previewError,setPreviewError]=useState('');
+ const [activeFile,setActiveFile]=useState<string|null>(null);
+ const [editorText,setEditorText]=useState('');
+ const [savedText,setSavedText]=useState('');
+ const [editingError,setEditingError]=useState('');
+ const replaceRef=useRef<HTMLInputElement>(null);
  const fileRef=useRef<HTMLInputElement>(null);
  const checks=useMemo(()=>validate(data.assets,config),[data.assets,config]);
  const blockers=checks.filter(c=>c.level==='error').length;
@@ -57,18 +65,23 @@ export default function FiveMWorkshop(){
  const models=data.assets.filter(f=>f.name.endsWith('.yft')&&!f.name.endsWith('_hi.yft'));
  const sourceMetas=data.assets.filter(f=>f.name.endsWith('.meta'));
  const streamFiles=data.assets.filter(f=>f.name.startsWith('stream/'));
+ const extraFiles=data.extraFiles??[];
+ const allProjectFiles=[...data.assets,...extraFiles];
  const change=(key:keyof VehicleConfig,value:string|boolean)=>{
    setConfig(previous=>({...previous,[key]:value}));
  };
  const loadImported=(imported:ImportedAssets)=>{
    setData(imported);
+   setActiveFile(null);setEditorText('');setSavedText('');setEditingError('');
    setConfig(previous=>inferConfig(imported.assets,{
      ...DEFAULTS,author:previous.author,description:previous.description,version:previous.version,
      keepExisting:previous.keepExisting,generateNames:previous.generateNames,
+     resource:imported.originalResource&&/^[a-z][a-z0-9_-]{0,63}$/i.test(imported.originalResource)
+       ? imported.originalResource.toLowerCase():'',
      handlingValues:{...DEFAULTS.handlingValues}
    }));
    setPage('identity');
-   setMessage('Zaimportowano '+imported.assets.length+' plików. Sprawdź walidację przed eksportem.');
+   setMessage('Otworzono projekt: '+imported.assets.length+' plików GTA i '+(imported.extraFiles?.length??0)+' dodatkowych plików. Zmiany pozostają lokalne do eksportu ZIP.');
  };
  const choose=async(files:File[])=>{
    if(working||files.length===0)return;
@@ -95,6 +108,46 @@ export default function FiveMWorkshop(){
      setMessage('Błąd RPF: '+String(error instanceof Error?error.message:error));
    }finally{setWorking(false);}
  };
+ const selectProjectFile=(file:VehicleAsset)=>{
+   setActiveFile(file.name);setEditingError('');
+   if(!textEditable(file.name)){setEditorText('');setSavedText('');return;}
+   try { const text=readText(file);setEditorText(text);setSavedText(text); }
+   catch(error){setEditorText('');setSavedText('');setEditingError(String(error instanceof Error?error.message:error));}
+ };
+ const saveProjectFile=()=>{
+   if(!activeFile || editorText===savedText)return;
+   try{
+     if(data.assets.some(file=>file.name===activeFile)){
+       const updated=updateFileText(data.assets,activeFile,editorText);
+       setData(prev=>({...prev,assets:updated}));
+     } else {
+       const updated=updateFileText(data.extraFiles??[],activeFile,editorText);
+       setData(prev=>({...prev,extraFiles:updated}));
+     }
+     setSavedText(editorText);setEditingError('');
+     setMessage('Zapisano zmiany '+activeFile+' w projekcie. Użyj Eksportuj addon ZIP, by utworzyć plik.');
+   }catch(error){setEditingError(String(error instanceof Error?error.message:error));}
+ };
+ const replaceSelected=async(event:ChangeEvent<HTMLInputElement>)=>{
+   const file=event.currentTarget.files?.[0];event.currentTarget.value='';
+   if(!file || !activeFile)return;
+   if(file.size>150*1024*1024){setEditingError('Plik większy niż 150 MiB.');return;}
+   const target=allProjectFiles.find(item=>item.name===activeFile);
+   if(!target)return;
+   const oldExtension=target.name.split('.').pop()?.toLowerCase();
+   const newExtension=file.name.split('.').pop()?.toLowerCase();
+   if(oldExtension!==newExtension){setEditingError('Podmieniany plik musi mieć to samo rozszerzenie.');return;}
+   const bytes=new Uint8Array(await file.arrayBuffer());
+   if(['yft','ytd'].includes(oldExtension??'')&&!['RSC7','RSC8'].includes(new TextDecoder().decode(bytes.subarray(0,4)))){
+     setEditingError('Odmówiono podmiany: to nie wygląda na prawidłowy model/teksturę GTA (RSC7/RSC8).');return;
+   }
+   const updated:{name:string;bytes:Uint8Array;source:string}={...target,bytes,source:'Podmieniony: '+file.name};
+   if(data.assets.some(item=>item.name===activeFile))
+     setData(prev=>({...prev,assets:prev.assets.map(x=>x.name===activeFile?updated:x)}));
+   else setData(prev=>({...prev,extraFiles:(prev.extraFiles??[]).map(x=>x.name===activeFile?updated:x)}));
+   setEditingError('');selectProjectFile(updated);
+   setMessage('Podmieniono '+activeFile+'. Wyeksportuj ZIP, aby otrzymać zmodyfikowany addon.');
+ };
  const onPick=(event:ChangeEvent<HTMLInputElement>)=>{
    const files=Array.from(event.currentTarget.files??[]);event.currentTarget.value='';
    void choose(files);
@@ -108,7 +161,7 @@ export default function FiveMWorkshop(){
    if(working||blockers) return;
    setWorking(true);setMessage('Generuję addon FiveM...');
    try{
-     const bytes=await createAddonZip(data.assets,config);
+     const bytes=await createAddonZip(data.assets,config,data.extraFiles??[]);
      if(bytes.length>256*1024*1024)throw new Error('ZIP przekracza 256 MiB limit zapisu. Podziel resource na mniejsze części.');
      let saved=true;
      const name=config.resource+'.zip';
@@ -128,28 +181,31 @@ export default function FiveMWorkshop(){
  const preview=useMemo(()=>{
    try{
      const metas=generatedMetas(data.assets,config);
+     const original=(data.extraFiles??[]).find(file=>file.name.toLowerCase()==='fxmanifest.lua');
+     const originalText=original?readText(original):undefined;
+     const makeNames=config.generateNames && !(data.extraFiles??[]).some(file=>file.name.toLowerCase()==='vehicle_names.lua');
      return {
-       files:{'fxmanifest.lua':fxManifest(config,Object.keys(metas)),
+       files:{'fxmanifest.lua':mergeVehicleManifest(originalText,config,Object.keys(metas),makeNames),
          ...Object.fromEntries(Object.entries(metas).map(([k,v])=>['data/'+k,v])),
-         ...(config.generateNames?{'vehicle_names.lua':vehicleNamesLua(config)}:{})},
+         ...(makeNames?{'vehicle_names.lua':vehicleNamesLua(config)}:{})},
        error:''
      };
    } catch(err){
      return {files:{} as Record<string,string>,error:String(err instanceof Error?err.message:err)};
    }
- },[data.assets,config]);
+ },[data.assets,data.extraFiles,config]);
  const previewNames=Object.keys(preview.files);
  return <section className="addon-studio" onDrop={onDrop} onDragOver={onDrag} onDragLeave={(event)=>{event.preventDefault();event.stopPropagation();setDrop(false);}}>
   <div className="addon-head">
     <div><span className="eyebrow">KUROGANE STUDIO / FIVE M TOOLCHAIN</span>
-      <h1>FiveM Vehicle Workshop <span>0.3 ALPHA</span></h1>
-      <p>RPF7 lub pliki GTA → addon FiveM ZIP. Metadane, fizyka i manifest bez ręcznego XML.</p></div>
+      <h1>FiveM Vehicle Workshop <span>0.4 ALPHA</span></h1>
+      <p>ZIP gotowego addonu lub RPF7 → edycja plików, handlingu i ustawień → nowy ZIP FiveM.</p></div>
     <button className="button primary" disabled={working||blockers>0} onClick={()=>void exportZip()}>
       {working?'Przetwarzanie…':'⇩ Eksportuj addon ZIP'}
     </button>
   </div>
   <div className="addon-summary">
-    <div><strong>{data.assets.length}</strong><span>zaimportowane pliki</span></div>
+    <div><strong>{data.assets.length}</strong><span>pliki GTA</span></div>
     <div><strong>{models.length}</strong><span>modele YFT</span></div>
     <div><strong>{sourceMetas.length}</strong><span>istniejące META</span></div>
     <div><strong className={blockers?'addon-danger':'addon-good'}>{blockers}</strong><span>błędy krytyczne</span></div>
@@ -159,10 +215,10 @@ export default function FiveMWorkshop(){
     <div className="addon-primary">
       <div className={'addon-dropzone '+(drop?'dragging':'')}>
         <div className="drop-mark">⇧</div>
-        <div><strong>Importuj pojazd GTA V</strong><p>Otwórz niezaszyfrowany RPF7 z autem albo załaduj ZIP / YFT / YTD / META. Po imporcie edytujesz ustawienia i eksportujesz addon.</p></div>
+        <div><strong>Importuj pojazd GTA V</strong><p>Wrzuć ZIP gotowego resource, zachowaj jego dodatkowe pliki i skrypty, zmień ustawienia lub podmień zasoby, a następnie eksportuj. Możesz też otworzyć RPF7.</p></div>
         <div className="rpf-actions">
           <button className="button primary" disabled={working} onClick={()=>void importRpf()}>▣ Otwórz RPF7</button>
-          <button className="button secondary" disabled={working} onClick={()=>fileRef.current?.click()}>ZIP / pliki</button>
+          <button className="button secondary" disabled={working} onClick={()=>fileRef.current?.click()}>Otwórz ZIP / pliki</button>
         </div>
         <input ref={fileRef} type="file" hidden multiple accept=".zip,.yft,.ytd,.ydr,.ydd,.ybn,.ytyp,.ymap,.ycd,.meta" onChange={onPick}/>
       </div>
@@ -210,10 +266,27 @@ export default function FiveMWorkshop(){
         <button className="button secondary" onClick={()=>setConfig(p=>({...p,handlingValues:{...DEFAULTS.handlingValues}}))}>Przywróć bazowy handling</button>
       </div>}
       {page==='files'&&<div className="addon-panel">
-        <h2>Wczytane pliki</h2><p className="addon-help">Kurogane kopiuje oryginalne binaria GTA bez modyfikacji. Nie próbuje konwertować GLB do YFT.</p>
+        <h2>Pliki projektu addonu</h2><p className="addon-help">Otwarty ZIP nie jest nadpisywany. Możesz zmieniać pliki tekstowe, podmieniać binaria i eksportować nowy ZIP. Oryginalnych plików modelu YFT nie modyfikujemy geometrycznie.</p>
+        <div className="addon-message">Załadowano {allProjectFiles.length} plików, w tym {extraFiles.length} plików dodatkowych. {extraFiles.some(f=>/\\.(lua|js)$/i.test(f.name))?'Uwaga: paczka zawiera skrypty — sprawdź ich bezpieczeństwo przed instalacją na serwerze.':''}</div>
         {!data.assets.length&&<div className="addon-empty">Brak zasobów — importuj ZIP lub pliki pojazdu.</div>}
-        {streamFiles.length>0&&<><h3>stream/</h3>{streamFiles.map(file=><div className="addon-file" key={file.name}><span>◈ {file.name}</span><small>{(file.bytes.length/1024/1024).toFixed(2)} MiB · {file.source}</small></div>)}</>}
-        {sourceMetas.length>0&&<><h3>Importowane metadane</h3>{sourceMetas.map(file=><div className="addon-file" key={file.name}><span>≡ {file.name}</span><small>{(file.bytes.length/1024).toFixed(1)} KiB</small></div>)}</>}
+        {streamFiles.length>0&&<><h3>stream/</h3>{streamFiles.map(file=><button className={'addon-file addon-file-button '+(activeFile===file.name?'file-active':'')} onClick={()=>selectProjectFile(file)} key={file.name}><span>◈ {file.name}</span><small>{(file.bytes.length/1024/1024).toFixed(2)} MiB</small></button>)}</>}
+        {sourceMetas.length>0&&<><h3>Importowane metadane</h3>{sourceMetas.map(file=><button className={'addon-file addon-file-button '+(activeFile===file.name?'file-active':'')} onClick={()=>selectProjectFile(file)} key={file.name}><span>≡ {file.name}</span><small>{(file.bytes.length/1024).toFixed(1)} KiB</small></button>)}</>}
+        {extraFiles.length>0&&<><h3>Dodatkowe pliki oryginalnego addonu ({extraFiles.length})</h3>
+           {extraFiles.map(file=><button className={'addon-file addon-file-button '+(activeFile===file.name?'file-active':'')} onClick={()=>selectProjectFile(file)} key={file.name}>
+             <span>▤ {file.name}</span><small>{(file.bytes.length/1024).toFixed(1)} KiB</small></button>)}</>}
+        {activeFile&&<div className="addon-editor">
+          <h3>Edytor pliku: {activeFile}</h3>
+          <div className="addon-editor-toolbar">
+            <button className="button secondary" onClick={()=>replaceRef.current?.click()}>↥ Podmień plik</button>
+            <input type="file" ref={replaceRef} hidden onChange={event=>void replaceSelected(event)}/>
+            {textEditable(activeFile)&&<button className="button primary" disabled={editorText===savedText} onClick={saveProjectFile}>Zapisz w projekcie</button>}
+          </div>
+          {editingError&&<div className="addon-check addon-error">{editingError}</div>}
+          {textEditable(activeFile) && !editingError &&
+            <textarea className="addon-text-editor" spellCheck={false} value={editorText} onChange={event=>setEditorText(event.target.value)} rows={14} />}
+          {!textEditable(activeFile)&&<p className="addon-help">Plik binarny: można go podmienić, ale nie edytować tekstowo.</p>}
+          {editorText!==savedText&&<p className="addon-unsaved">Masz niezapisane zmiany tego pliku. Kliknij „Zapisz w projekcie”.</p>}
+        </div>}
         {data.warnings.map(text=><div className="addon-message" key={text}>{text}</div>)}
       </div>}
       {page==='code'&&<div className="addon-panel">
@@ -238,7 +311,8 @@ export default function FiveMWorkshop(){
           <span>│　├─ vehicles.meta</span><span>│　├─ handling.meta</span>
           <span>│　├─ carvariations.meta</span>
           {config.keepExisting&&sourceMetas.some(f=>f.name==='data/carcols.meta')&&<span>│　└─ carcols.meta</span>}
-          <span>└─ stream/ ({streamFiles.length} plików)</span>
+          <span>├─ stream/ ({streamFiles.length} plików)</span>
+          {extraFiles.length>0&&<span>└─ + {extraFiles.length} zachowanych plików i folderów</span>}
         </div>
         <div className="addon-command">server.cfg: <code>ensure {config.resource||'resource'}</code></div>
       </div>
