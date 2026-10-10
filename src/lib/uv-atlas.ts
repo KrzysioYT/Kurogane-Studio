@@ -26,7 +26,7 @@ export function packUVIslands(mesh:THREE.Mesh):number{
    const material=new Int32Array(faces);
    for(const group of source.groups){
      const end=Math.min(pos.count,group.start+group.count);
-     for(let i=group.start;i<end;i+=3)material[Math.floor(i/3)]=group.materialIndex;
+     for(let i=group.start;i<end;i+=3)material[Math.floor(i/3)]=group.materialIndex??0;
    }
    const coords=(i:number)=>new THREE.Vector3().fromBufferAttribute(pos,i);
    const hash=(v:THREE.Vector3)=>[v.x,v.y,v.z].map(x=>Math.round(x*1e5)).join(',');
