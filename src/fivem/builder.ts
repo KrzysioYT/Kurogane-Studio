@@ -1,7 +1,10 @@
 import JSZip from 'jszip';
 import { DEFAULTS, HANDLING_DEFINITIONS } from './types';
 import type { Check, VehicleAsset, VehicleConfig } from './types';
-import { fxManifest, handlingXML, variationsXML, vehicleNamesLua, vehiclesXML } from './templates';
+import { handlingXML, variationsXML, vehicleNamesLua, vehiclesXML } from './templates';
+import { loadAddonProjectZip } from './zip-project';
+import type { ExtraFile } from './zip-project';
+import { mergeVehicleManifest } from './manifest';
 
 const STREAM_EXT = new Set(['yft','ytd','ydr','ydd','ybn','ytyp','ymap','ycd']);
 const META_NAMES = new Set(['vehicles.meta','handling.meta','carvariations.meta','carcols.meta','vehiclelayouts.meta']);
@@ -24,52 +27,32 @@ function decode(bytes:Uint8Array) { return new TextDecoder('utf-8',{fatal:false}
 const originalMeta=(assets:VehicleAsset[],name:string)=>
   assets.find(asset=>asset.name === 'data/'+name);
 
-export type ImportedAssets={assets:VehicleAsset[];ignored:number;warnings:string[]};
+export type ImportedAssets={
+ assets:VehicleAsset[]; extraFiles?:ExtraFile[];
+ originalResource?:string; ignored:number;warnings:string[]
+};
 export async function readAssets(input: File[]): Promise<ImportedAssets> {
+ const archives=input.filter(file=>file.name.toLowerCase().endsWith('.zip'));
+ if(archives.length) {
+   if(input.length!==1)throw new Error('Wczytaj jeden projekt ZIP naraz. Później możesz podmieniać jego pliki pojedynczo.');
+   return loadAddonProjectZip(archives[0]);
+ }
  const result=new Map<string,VehicleAsset>();
- let ignored=0, total=0;
+ let total=0,ignored=0;
+ for(const file of input){
+   if(file.size>MAX_FILE)throw new Error('Plik przekracza 150 MiB: '+file.name);
+   const target=normalizeName(file.name);
+   if(!target){ignored++;continue;}
+   total+=file.size;
+   if(total>MAX_TOTAL)throw new Error('Limit importu 256 MiB został przekroczony.');
+   if(result.has(target))throw new Error('Duplikat: '+target);
+   result.set(target,{name:target,bytes:new Uint8Array(await file.arrayBuffer()),source:file.name});
+ }
+ const assets=[...result.values()];
  const warnings:string[]=[];
- async function collect(name:string, bytes:Uint8Array, source:string) {
-   const target=normalizeName(name);
-   if (!target) { ignored++; return; }
-   if (bytes.byteLength > MAX_FILE) throw new Error('Plik zbyt duży: '+name);
-   total+=bytes.byteLength;
-   if (total>MAX_TOTAL) throw new Error('Łączny limit importu 256 MiB został przekroczony.');
-   if (result.has(target)) throw new Error('Dwa pliki o tej samej nazwie: '+target+'. Spakuj pojazdy oddzielnie.');
-   result.set(target,{name:target,bytes,source});
- }
- for (const file of input) {
-   if (file.size > MAX_FILE) throw new Error('Plik '+file.name+' przekracza 150 MiB.');
-   if (file.name.toLowerCase().endsWith('.zip')) {
-     // Validate the uncompressed sizes before inflating any ZIP content.
-     // checkCRC32=true would eagerly decompress every entry, including ZIP bombs.
-     const zip=await JSZip.loadAsync(await file.arrayBuffer(),{checkCRC32:false});
-     const entries=Object.values(zip.files).filter(entry=>!entry.dir);
-     if (entries.length>MAX_ENTRIES) throw new Error('ZIP ma zbyt dużo wpisów (maks. 600).');
-     let declaredTotal=0;
-     for(const entry of entries) {
-       const declared=(entry as typeof entry & {_data?:{uncompressedSize?:number}})._data?.uncompressedSize;
-       if(typeof declared!=='number' || !Number.isSafeInteger(declared) || declared<0)
-         throw new Error('ZIP nie deklaruje poprawnego rozmiaru: '+entry.name);
-       if(declared>MAX_FILE) throw new Error('Za duży plik wewnątrz ZIP: '+entry.name);
-       declaredTotal+=declared;
-       if(declaredTotal>MAX_TOTAL) throw new Error('ZIP po rozpakowaniu przekracza 256 MiB.');
-     }
-     for (const entry of entries) {
-       const rawName=(entry as typeof entry & {unsafeOriginalName?:string}).unsafeOriginalName ?? entry.name;
-       const target=normalizeName(rawName);
-       if (!target) {ignored++;continue;}
-       // JSZip decompresses a single accepted asset at a time; verify size afterwards.
-       const bytes=await entry.async('uint8array');
-       await collect(rawName,bytes,file.name);
-     }
-   } else {
-     await collect(file.name,new Uint8Array(await file.arrayBuffer()),file.name);
-   }
- }
- if (!result.size) warnings.push('Nie znaleziono plików .yft, .ytd ani obsługiwanych .meta.');
- if (ignored) warnings.push('Pominięto '+ignored+' innych plików (w tym manifesty i skrypty z obcych ZIP-ów).');
- return {assets:[...result.values()],ignored,warnings};
+ if(!assets.length)warnings.push('Nie wykryto wspieranych plików pojazdu.');
+ if(ignored)warnings.push('Pominięto '+ignored+' nieobsługiwanych plików.');
+ return {assets,extraFiles:[],ignored,warnings};
 }
 
 function textValue(xml:string,tag:string):string | undefined {
@@ -256,20 +239,44 @@ export function projectSummary(c:VehicleConfig) {
   ''
  ].join('\n');
 }
-export async function createAddonZip(assets:VehicleAsset[],c:VehicleConfig):Promise<Uint8Array> {
+export async function createAddonZip(
+ assets:VehicleAsset[],c:VehicleConfig,extraFiles:ExtraFile[]=[]
+):Promise<Uint8Array> {
  const checks=validate(assets,c);
- if(checks.some(ch=>ch.level==='error')) throw new Error(checks.filter(ch=>ch.level==='error').map(ch=>ch.text).join(' | '));
+ if(checks.some(ch=>ch.level==='error'))
+   throw new Error(checks.filter(ch=>ch.level==='error').map(ch=>ch.text).join(' | '));
  const metas=generatedMetas(assets,c);
  const zip=new JSZip();
  const folder=zip.folder(c.resource)!;
- for (const asset of assets) {
-   if(asset.name.startsWith('stream/')) folder.file(asset.name,asset.bytes);
+ const written=new Set<string>();
+ const append=(name:string,bytes:Uint8Array|string)=>{
+   const key=name.toLowerCase();
+   if(written.has(key))throw new Error('Konflikt nazwy pliku w eksporcie: '+name);
+   written.add(key);
+   folder.file(name,bytes);
+ };
+ for(const asset of assets){
+   if(asset.name.startsWith('stream/'))append(asset.name,asset.bytes);
  }
- for(const [name,xml] of Object.entries(metas)) folder.file('data/'+name,xml);
- folder.file('fxmanifest.lua',fxManifest(c,Object.keys(metas)));
- if(c.generateNames) folder.file('vehicle_names.lua',vehicleNamesLua(c));
- folder.file('README_KUROGANE.txt',projectSummary(c));
- folder.file('server_cfg_example.txt','ensure '+c.resource+'\n');
+ const reserved=new Set(Object.keys(metas).map(name=>'data/'+name));
+ const manifest=extraFiles.find(file=>file.name.toLowerCase()==='fxmanifest.lua');
+ const originalManifest=manifest?new TextDecoder('utf-8',{fatal:true}).decode(manifest.bytes):undefined;
+ const existingNameScript=extraFiles.some(file=>file.name.toLowerCase()==='vehicle_names.lua');
+ const generateNames=c.generateNames&&!existingNameScript;
+ for(const file of extraFiles){
+   const name=file.name;
+   const key=name.toLowerCase();
+   // Manifest is rebuilt from the original and the current vehicle metadata.
+   if(key==='fxmanifest.lua')continue;
+   if(reserved.has(key))throw new Error('Plik dodatkowy koliduje z wygenerowanym META: '+name);
+   if(key==='README_KUROGANE.txt'.toLowerCase()||key==='server_cfg_example.txt')continue;
+   append(name,file.bytes);
+ }
+ for(const [name,xml] of Object.entries(metas))append('data/'+name,xml);
+ append('fxmanifest.lua',mergeVehicleManifest(originalManifest,c,Object.keys(metas),generateNames));
+ if(generateNames)append('vehicle_names.lua',vehicleNamesLua(c));
+ append('README_KUROGANE.txt',projectSummary(c));
+ append('server_cfg_example.txt','ensure '+c.resource+'\n');
  return zip.generateAsync({type:'uint8array',compression:'DEFLATE',compressionOptions:{level:4}});
 }
 export function createConfigJSON(c:VehicleConfig):string { return JSON.stringify(c,null,2); }
