@@ -4,7 +4,7 @@
 
 ## Status (v0.1.0 / MVP)
 
-Działa: desktopowy interfejs Tauri 2 / React, obracany podgląd 3D Three.js, scena demonstracyjna, import **GLB**, **OBJ** i samowystarczalnych **GLTF** (z zasobami wbudowanymi), wybór elementów modelu, przesuwanie/obracanie/skalowanie, drzewo elementów, edycja materiałów (kolor, metaliczność, szorstkość), widoczność elementów oraz eksport **GLB** przez natywne okno zapisu Windows.
+Działa: desktopowy interfejs Tauri 2 / React, obracany podgląd 3D Three.js, scena demonstracyjna, import **GLB**, **OBJ** i samowystarczalnych **GLTF** (z zasobami wbudowanymi), wybór elementów modelu, przesuwanie/obracanie/skalowanie, drzewo elementów, edycja materiałów (kolor, metaliczność, szorstkość) oraz podmiana tekstury PNG/JPG/WebP dla mesha z UV, widoczność elementów oraz eksport **GLB** przez natywne okno zapisu Windows.
 
 **Nie działa jeszcze**: import/eksport GTA V **YFT/YTD**, kolizje, LOD-y, kompletne pojazdy do FiveM, automatyczne rigowanie, narzędzia AI. Eksport GLB **nie tworzy automatycznie pojazdu GTA V**. 29 zaplanowanych narzędzi jest opisanych w `docs/ROADMAP.md`, ale pozostałe nie są oznaczane jako zaimplementowane.
 
@@ -27,7 +27,7 @@ Szybki test samego UI: `npm run dev` (w przeglądarce zapis GLB używa pobrania 
 
 1. Kliknij **Auto demonstracyjne**, by załadować przykładowy model z geometrii, albo **Importuj model** i wybierz `.glb`, `.obj` lub samowystarczalny `.gltf`.
 2. Kliknij siatkę w widoku lub pozycję w **Hierarchii**. `W` przesuwanie, `E` obrót, `R` skala; `F` dopasowanie kamery.
-3. Po prawej zmień pozycję/obrót/skalę i materiał wybranej części, albo ukryj ją w hierarchii.
+3. Po prawej zmień pozycję/obrót/skalę i materiał wybranej części, wczytaj teksturę PNG/JPG/WebP (wymaga UV), albo ukryj część w hierarchii.
 4. Użyj **Eksportuj GLB**. Zapisuje wyłącznie edytowany model, bez pomocy wizualnych sceny.
 
 Import GLTF wymagający zewnętrznych tekstur/plików `.bin` nie jest jeszcze obsługiwany — użyj `.glb`. Import OBJ bez MTL zachowuje tylko geometrię i generowane materiały. Wykorzystuj wyłącznie modele i tekstury, do których masz prawa.
