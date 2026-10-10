@@ -3,3 +3,14 @@
 
 /* Native GTA V RPF importer — keeps the existing layout unchanged. */
 .rpf-actions{display:flex;flex-wrap:wrap;gap:9px;align-items:center}.rpf-actions .button{white-space:nowrap}.addon-dropzone:has(.rpf-actions){padding:17px 19px}@media(max-width:1200px){.rpf-actions{flex-direction:column;align-items:stretch}.rpf-actions .button{width:100%}}
+
+/* ZIP project editor / file browser */
+.addon-file-button{width:100%;text-align:left;cursor:pointer;font:inherit}
+.addon-file-button:hover{background:#274451;border-color:#5a93a1}
+.addon-file-button.file-active{background:#244958;border-color:#60b7c2}
+.addon-editor{border:1px solid #416474;border-radius:9px;padding:16px;background:#162a36;margin-top:20px}
+.addon-editor h3{overflow-wrap:anywhere;margin:0 0 12px}
+.addon-editor-toolbar{display:flex;align-items:center;gap:9px;margin-bottom:12px;flex-wrap:wrap}
+.addon-text-editor{width:100%;min-height:250px;resize:vertical;border:1px solid #3e6576;background:#101b25;color:#d0e9e5;font:12px/1.65 Consolas,'Cascadia Code',monospace;padding:14px;border-radius:6px;tab-size:2}
+.addon-text-editor:focus{outline:2px solid #5cb9c8;outline-offset:1px}
+.addon-unsaved{color:#e6bc81;font-size:12px;margin-bottom:0}
