@@ -153,7 +153,8 @@ pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
    }
  }
  let intended=|section_id:u8,position:usize| -> bool {
-   intervals.iter().any(|&(id,start)|id==section_id && position>=start && position-start<12)
+   let n=intervals.partition_point(|&(id,start)|id<section_id || (id==section_id&&start<=position));
+   n>0 && intervals[n-1].0==section_id && position-intervals[n-1].1<12
  };
  if system.iter().zip(original_system.iter()).enumerate().any(|(i,(a,b))|a!=b&&!intended(0,i)) ||
     graphics.iter().zip(original_graphics.iter()).enumerate().any(|(i,(a,b))|a!=b&&!intended(1,i)){
