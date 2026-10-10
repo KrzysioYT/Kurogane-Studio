@@ -1,6 +1,6 @@
 {
   "productName": "Kurogane Studio",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "identifier": "dev.krzysioyt.kuroganestudio",
   "build": {
     "beforeDevCommand": "npm run dev",
