@@ -7,7 +7,7 @@ import { exportGLB, saveGLB } from '../lib/io';
 import type { VehicleAsset } from '../fivem/types';
 import './YftInspector.css';
 
-type MeshData={name:string;vertices:number[];normals:number[];uv:number[];indices:number[];shaderId:number};
+type MeshData={name:string;vertices:number[];normals:number[];uv:number[];indices:number[];shaderId:number;suggestedTexture?:string|null};
 type Props={files:VehicleAsset[]};
 type TextureEntry={name:string;width:number;height:number;format:string;levels:number};
 function fromMeshes(data:MeshData[],root:THREE.Group){
@@ -26,6 +26,7 @@ function fromMeshes(data:MeshData[],root:THREE.Group){
    const mesh=new THREE.Mesh(geometry,material);
    mesh.name=part.name;
    mesh.userData.shaderId=part.shaderId;
+   mesh.userData.suggestedTexture=part.suggestedTexture??null;
    mesh.castShadow=true;mesh.receiveShadow=true;
    root.add(mesh);
  }
@@ -38,6 +39,7 @@ export default function YftInspector({files}:Props){
  const [focus,setFocus]=useState(0);
  const [shaderIds,setShaderIds]=useState<number[]>([]);
  const [shader,setShader]=useState<number|null>(null);
+ const [textureSuggestions,setTextureSuggestions]=useState<Record<number,string>>({});
  const [textureFile,setTextureFile]=useState('');
  const [textureName,setTextureName]=useState('');
  const [textureEntries,setTextureEntries]=useState<TextureEntry[]>([]);
@@ -51,7 +53,7 @@ export default function YftInspector({files}:Props){
        oldTextures.add(object.material.map);
    }
    for(const texture of oldTextures)texture.dispose();
-   setFilename(name);clearModel(root);setStats({meshCount:0,triangles:0});setShaderIds([]);setShader(null);
+   setFilename(name);clearModel(root);setStats({meshCount:0,triangles:0});setShaderIds([]);setShader(null);setTextureSuggestions({});
    if(!name)return;
    if(!isTauri()){setMessage('Podgląd YFT wymaga aplikacji Windows Tauri.');return;}
    const file=files.find(f=>f.name===name);
@@ -62,6 +64,11 @@ export default function YftInspector({files}:Props){
      fromMeshes(parts,root);
      const shaders=[...new Set(parts.map(part=>part.shaderId))].sort((a,b)=>a-b);
      setShaderIds(shaders);setShader(shaders[0]??null);
+     const suggestions:Record<number,string>={};
+     for(const part of parts){
+       if(part.suggestedTexture && !suggestions[part.shaderId])suggestions[part.shaderId]=part.suggestedTexture;
+     }
+     setTextureSuggestions(suggestions);
      const triangles=parts.reduce((s,x)=>s+Math.floor(x.indices.length/3),0);
      setStats({meshCount:parts.length,triangles});
      setFocus(n=>n+1);
@@ -77,10 +84,27 @@ export default function YftInspector({files}:Props){
    try{
      const textures=await invoke<TextureEntry[]>('ytd_list',{bytes:Array.from(item.bytes)});
      setTextureEntries(textures);
-     setTextureName(textures[0]?.name??'');
+     const suggested=shader!==null?textureSuggestions[shader]:undefined;
+     const match=textures.find(t=>t.name.toLowerCase()===suggested?.toLowerCase());
+     setTextureName(match?.name??textures[0]?.name??'');
      setMessage('Wybierz teksturę oraz shader z modelu, by zobaczyć mapowanie UV.');
    }catch(error){setMessage('Nie można załadować tekstur YTD: '+String(error));}
    finally{setBusy(false);}
+ };
+ const selectShader=(id:number)=>{
+   setShader(id);
+   const suggested=textureSuggestions[id];
+   const match=textureEntries.find(t=>t.name.toLowerCase()===suggested?.toLowerCase());
+   if(match)setTextureName(match.name);
+ };
+ const suggestTexture=()=>{
+   if(shader===null)return;
+   const suggested=textureSuggestions[shader];
+   if(!suggested){setMessage('YFT nie podaje nazwy tekstury dla tej grupy shadera — wybierz ją ręcznie.');return;}
+   const match=textureEntries.find(t=>t.name.toLowerCase()===suggested.toLowerCase());
+   if(!match){setMessage('Shader YFT sugeruje '+suggested+', ale nie ma tej tekstury w wybranym YTD. Spróbuj innego słownika.');return;}
+   setTextureName(match.name);
+   setMessage('Znaleziono automatyczne dopasowanie shader → '+match.name+'. Możesz teraz nałożyć tę teksturę.');
  };
  const resetTexturePreview=()=>{
    const handled=new Set<THREE.Texture>();
@@ -154,10 +178,11 @@ export default function YftInspector({files}:Props){
    </div>
    <div className="yft-uv-controls">
      <label>Grupa materiału (shader ID)
-       <select value={shader??''} onChange={event=>setShader(Number(event.target.value))} disabled={!shaderIds.length||busy}>
+       <select value={shader??''} onChange={event=>selectShader(Number(event.target.value))} disabled={!shaderIds.length||busy}>
          {shaderIds.map(id=><option key={id} value={id}>Shader {id} ({root.children.filter(o=>o.userData.shaderId===id).length} meshów)</option>)}
        </select>
      </label>
+     {shader!==null&&textureSuggestions[shader]&&<span className="yft-shader-hint">YFT sugeruje: {textureSuggestions[shader]}</span>}
      <label>YTD projektu
        <select value={textureFile} onChange={event=>void pickTextureFile(event.target.value)} disabled={busy}>
          <option value="">— wybierz plik tekstur —</option>
@@ -169,12 +194,13 @@ export default function YftInspector({files}:Props){
          {textureEntries.map(tex=><option key={tex.name} value={tex.name}>{tex.name}</option>)}
        </select>
      </label>
+     <button className="button secondary" disabled={busy||shader===null||!textureSuggestions[shader]} onClick={suggestTexture}>Dobierz z YFT</button>
      <button className="button primary" disabled={busy||shader===null||!textureName} onClick={()=>void applyTexture()}>Zobacz teksturę na modelu</button>
      <button className="button secondary" disabled={!root.children.length||busy} onClick={resetTexturePreview}>Przywróć materiały</button>
    </div>
    <div className="yft-preview"><Viewport root={root} selectedId={null} mode="translate" focusToken={focus}
      onSelect={id=>{const mesh=id?root.getObjectByProperty('uuid',id):undefined;
-       if(mesh instanceof THREE.Mesh && typeof mesh.userData.shaderId==='number')setShader(mesh.userData.shaderId);
+       if(mesh instanceof THREE.Mesh && typeof mesh.userData.shaderId==='number')selectShader(mesh.userData.shaderId);
      }} onChange={()=>{}}/></div>
    <div className="addon-message" role="status">{busy?'Trwa przetwarzanie modelu…':message}</div>
    <p className="texture-warning">Kliknij część samochodu w podglądzie, aby ustawić jej shader, a następnie wybierz teksturę YTD. To ręczna wizualizacja UV: nie odtwarza automatycznie powiązań materiałów GTA i może wyglądać inaczej niż w FiveM. Nie edytuje YFT ani nie zastępuje pełnego eksportera pojazdów.</p>
