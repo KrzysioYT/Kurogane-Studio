@@ -43,7 +43,7 @@ fn save_vehicle_zip(file_name: String, bytes: Vec<u8>) -> Result<bool, String> {
     if bytes.is_empty() || bytes.len() > MAX_BYTES {
         return Err("ZIP ma nieprawidłowy rozmiar (maks. 256 MiB).".into());
     }
-    if !bytes.starts_with(b"PK\\x03\\x04") {
+    if !bytes.starts_with(b"PK\x03\x04") {
         return Err("Nieprawidłowy nagłówek archiwum ZIP.".into());
     }
     let stem: String = file_name
