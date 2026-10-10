@@ -11,13 +11,15 @@ import { mergeVehicleManifest } from '../fivem/manifest';
 import { readText, textEditable, updateFileText } from '../fivem/zip-project';
 import type { VehicleAsset } from '../fivem/types';
 import { pickRpfArchive } from '../fivem/rpf';
+import TextureStudio from './TextureStudio';
 
-type Page = 'identity'|'physics'|'files'|'code';
+type Page = 'identity'|'physics'|'textures'|'files'|'code';
 const pages: {id:Page;label:string}[] = [
  {id:'identity',label:'01 · Pojazd'},
  {id:'physics',label:'02 · Handling'},
- {id:'files',label:'03 · Zasoby'},
- {id:'code',label:'04 · Wygenerowane pliki'},
+ {id:'textures',label:'03 · Retexture / Loga'},
+ {id:'files',label:'04 · Zasoby'},
+ {id:'code',label:'05 · Wygenerowane pliki'},
 ];
 const empty:ImportedAssets={assets:[],warnings:[],ignored:0};
 const toNumber = (value:string)=>Number(value);
@@ -57,6 +59,7 @@ export default function FiveMWorkshop(){
  const [editorText,setEditorText]=useState('');
  const [savedText,setSavedText]=useState('');
  const [editingError,setEditingError]=useState('');
+ const [textureDirty,setTextureDirty]=useState(false);
  const replaceRef=useRef<HTMLInputElement>(null);
  const fileRef=useRef<HTMLInputElement>(null);
  const checks=useMemo(()=>validate(data.assets,config),[data.assets,config]);
@@ -71,7 +74,7 @@ export default function FiveMWorkshop(){
    setConfig(previous=>({...previous,[key]:value}));
  };
  const loadImported=(imported:ImportedAssets)=>{
-   setData(imported);
+   setData(imported);setTextureDirty(false);
    setActiveFile(null);setEditorText('');setSavedText('');setEditingError('');
    setConfig(previous=>inferConfig(imported.assets,{
      ...DEFAULTS,author:previous.author,description:previous.description,version:previous.version,
@@ -164,6 +167,7 @@ export default function FiveMWorkshop(){
  const onDrag=(event:DragEvent<HTMLElement>)=>{event.preventDefault();event.stopPropagation();setDrop(true);};
  const exportZip=async()=>{
    if(working||blockers)return;
+   if(textureDirty){setMessage('Najpierw zapisz teksturę w YTD w zakładce Retexture / Loga.');return;}
    if(editorText!==savedText){
      setMessage('Najpierw kliknij Zapisz w projekcie przy edytowanym pliku, potem eksportuj ZIP.');return;
    }
@@ -186,6 +190,10 @@ export default function FiveMWorkshop(){
    }catch(error){setMessage('Błąd eksportu: '+String(error instanceof Error?error.message:error));}
    finally{setWorking(false);}
  };
+ const updateYtd=(name:string,bytes:Uint8Array)=>{
+   setData(previous=>({...previous,assets:previous.assets.map(file=>file.name===name?{...file,bytes,source:'YTD edytowany w Kurogane Studio'}:file)}));
+   setMessage('Tekstura YTD zaktualizowana w pamięci projektu. Eksportuj ZIP, aby zapisać całe auto.');
+ };
  const preview=useMemo(()=>{
    try{
      const metas=generatedMetas(data.assets,config);
@@ -206,9 +214,9 @@ export default function FiveMWorkshop(){
  return <section className="addon-studio" onDrop={onDrop} onDragOver={onDrag} onDragLeave={(event)=>{event.preventDefault();event.stopPropagation();setDrop(false);}}>
   <div className="addon-head">
     <div><span className="eyebrow">KUROGANE STUDIO / FIVE M TOOLCHAIN</span>
-      <h1>FiveM Vehicle Workshop <span>0.4 ALPHA</span></h1>
-      <p>ZIP gotowego addonu lub RPF7 → edycja plików, handlingu i ustawień → nowy ZIP FiveM.</p></div>
-    <button className="button primary" disabled={working||blockers>0||editorText!==savedText} onClick={()=>void exportZip()}>
+      <h1>FiveM Vehicle Workshop <span>0.5 ALPHA</span></h1>
+      <p>Import auta z ZIP lub RPF7, edycja handlingu i tekstur YTD, logotypy oraz eksport addonu.</p></div>
+    <button className="button primary" disabled={working||blockers>0||editorText!==savedText||textureDirty} onClick={()=>void exportZip()}>
       {working?'Przetwarzanie…':'⇩ Eksportuj addon ZIP'}
     </button>
   </div>
@@ -273,6 +281,9 @@ export default function FiveMWorkshop(){
         </div>
         <button className="button secondary" onClick={()=>setConfig(p=>({...p,handlingValues:{...DEFAULTS.handlingValues}}))}>Przywróć bazowy handling</button>
       </div>}
+      <div style={{display:page==='textures'?'block':'none'}}>
+        <TextureStudio files={data.assets} onUpdate={updateYtd} onDirtyChange={setTextureDirty}/>
+      </div>
       {page==='files'&&<div className="addon-panel">
         <h2>Pliki projektu addonu</h2><p className="addon-help">Otwarty ZIP nie jest nadpisywany. Możesz zmieniać pliki tekstowe, podmieniać binaria i eksportować nowy ZIP. Oryginalnych plików modelu YFT nie modyfikujemy geometrycznie.</p>
         <div className="addon-message">Załadowano {allProjectFiles.length} plików, w tym {extraFiles.length} plików dodatkowych. {extraFiles.some(f=>/\\.(lua|js)$/i.test(f.name))?'Uwaga: paczka zawiera skrypty — sprawdź ich bezpieczeństwo przed instalacją na serwerze.':''}</div>
