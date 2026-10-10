@@ -89,6 +89,20 @@ fn patch_section(section:&mut [u8],offset:usize, coords:[f32;3])->Result<(),Stri
   Ok(())
 }
 
+fn repack_preserving_header(original:&[u8],system:&[u8],graphics:&[u8])->Result<Vec<u8>,String>{
+ if original.len()<16 || !original.starts_with(b"RSC7"){return Err("Oryginalny nagłówek RSC7 jest niepoprawny.".into());}
+ let sys_flags=u32::from_le_bytes(original[8..12].try_into().unwrap());
+ let gfx_flags=u32::from_le_bytes(original[12..16].try_into().unwrap());
+ let version=rage_formats::resource_version_from_flags(sys_flags,gfx_flags);
+ let mut output=build_rsc7_with_flags(version,sys_flags,system,gfx_flags,graphics);
+ // The second header word can hold a different value from the version nibbles.
+ // It is not part of deflate input: keep the complete original 16-byte header.
+ output[..16].copy_from_slice(&original[..16]);
+ if output[..16]!=original[..16] {
+   return Err("Nagłówek RSC7 zmienił się podczas zapisu.".into());
+ }
+ Ok(output)
+}
 pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
  if !bytes.starts_with(b"RSC7")||bytes.len()<16||bytes.len()>MAX_INPUT{
    return Err("Nieobsługiwany lub zbyt duży YFT (tylko RSC7 do 160 MiB).".into());
@@ -105,7 +119,6 @@ pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
  let bindings=mesh_bindings(bytes)?;
  let (mut system,mut graphics)=prepare_rsc7(bytes)
    .map_err(|e|format!("Nie można rozpakować YFT: {e}"))?;
- let version=u32::from_le_bytes(bytes[4..8].try_into().unwrap());
  let original_system=system.clone();
  let original_graphics=graphics.clone();
  let mut seen=HashMap::<(u8,usize),[f32;3]>::new();
@@ -162,7 +175,7 @@ pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
  }
  // Rebuild using the SAME RSC7 flags, exact pages, offsets, section sizes and version.
  // We have not changed a pointer, triangle count, bone or collision struct.
- let result=build_rsc7_with_flags(version,sys_flags,&system,gfx_flags,&graphics);
+ let result=repack_preserving_header(bytes,&system,&graphics)?;
  // Required post-serialization check: reparse the complete fragment and compare edited points.
  let (sys_check,gfx_check)=prepare_rsc7(&result)
    .map_err(|e|format!("Nie można odczytać zapisanego YFT: {e}"))?;
@@ -231,11 +244,15 @@ mod tests{
    let f2=u32::from_le_bytes(original[12..16].try_into().unwrap());
    let (mut sys,mut gfx)=prepare_rsc7(&original).unwrap();
    patch_section(&mut gfx,12,[2.0,3.0,4.0]).unwrap();
-   let result=build_rsc7_with_flags(162,f1,&sys,f2,&gfx);
+   let result=repack_preserving_header(&original,&sys,&gfx).unwrap();
    let (sys2,gfx2)=prepare_rsc7(&result).unwrap();
    assert_eq!(sys,sys2);
    assert_eq!(gfx,gfx2);
-   assert_eq!(original[4..16],result[4..16]);
+   assert_eq!(original[0..16],result[0..16]);
+   let mut alternate=original.clone();
+   alternate[4..8].copy_from_slice(&0xEFAB_1234u32.to_le_bytes());
+   let preserved=repack_preserving_header(&alternate,&sys2,&gfx2).unwrap();
+   assert_eq!(preserved[0..16],alternate[0..16]);
    sys[0]=99;
    assert_ne!(sys,sys2);
  }
