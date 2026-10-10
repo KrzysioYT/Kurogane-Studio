@@ -1,7 +1,7 @@
 name: Windows build
 on:
   push:
-    branches: [main, feat/windows-3d-editor-mvp]
+    branches: [main, feat/windows-3d-editor-mvp, feat/fivem-vehicle-addon-builder]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -19,6 +19,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Node dependencies
         run: npm install --no-audit --no-fund
+      - name: Test resource generator
+        run: npm test
       - name: Typecheck and build UI
         run: npm run build
       - name: Build Windows NSIS installer
