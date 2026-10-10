@@ -44,7 +44,8 @@ function commonRoot(paths:string[]):string{
   const dirs=paths.map(p=>p.split('/').slice(0,-1));
   const common=[...(dirs[0]??[])];
   while(common.length&&!dirs.every(parts=>common.every((p,i)=>parts[i]===p)))common.pop();
-  if(common.length&&SHELL_DIRS.has(common[0].toLowerCase()))return '';
+  // A single stream/ or data/ directory is a component, not the resource root.
+  while(common.length&&SHELL_DIRS.has(common[common.length-1].toLowerCase()))common.pop();
   return common.join('/');
 }
 function assertValidZIPEntry(entry:JSZip.JSZipObject){
