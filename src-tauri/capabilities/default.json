@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "Minimal permissions for local 3D editor",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}
