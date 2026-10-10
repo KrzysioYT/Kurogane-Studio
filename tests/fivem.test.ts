@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
+import { JSDOM } from 'jsdom';
+const dom = new JSDOM('');
+Object.assign(globalThis, { DOMParser: dom.window.DOMParser, XMLSerializer: dom.window.XMLSerializer });
 import { DEFAULTS } from '../src/fivem/types';
 import { createAddonZip, inferConfig, readAssets, validate } from '../src/fivem/builder';
 import { escapeLua, escapeXML, fxManifest, handlingXML, vehiclesXML } from '../src/fivem/templates';
