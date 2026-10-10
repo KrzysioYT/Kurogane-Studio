@@ -3,7 +3,7 @@ import { DEFAULTS, HANDLING_DEFINITIONS } from './types';
 import type { Check, VehicleAsset, VehicleConfig } from './types';
 import { fxManifest, handlingXML, variationsXML, vehicleNamesLua, vehiclesXML } from './templates';
 
-const STREAM_EXT = new Set(['yft','ytd','ydr','ybn','ytyp','ymap']);
+const STREAM_EXT = new Set(['yft','ytd','ydr','ydd','ybn','ytyp','ymap','ycd']);
 const META_NAMES = new Set(['vehicles.meta','handling.meta','carvariations.meta','carcols.meta','vehiclelayouts.meta']);
 const MAX_FILE = 150 * 1024 * 1024;
 const MAX_TOTAL = 256 * 1024 * 1024;
