@@ -144,6 +144,42 @@ mod tests {
     use super::output_name;
 
     #[test]
+    fn reads_open_rpf7_written_by_archive_library() {
+        use rpf_archive::{RpfBuilder, RpfEncryption};
+        let path = std::env::temp_dir().join(format!(
+            "kurogane-rpf-roundtrip-{}-{:?}.rpf",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let mut builder = RpfBuilder::new(RpfEncryption::Open);
+        builder.add_file("data/vehicles.meta", b"<CVehicleModelInfo__InitDataList/>".to_vec());
+        builder.add_file("unrelated/readme.txt", b"ignored".to_vec());
+        let bytes = builder.build(None).expect("RPF7 writer must succeed");
+        std::fs::write(&path, bytes).expect("temp RPF can be written");
+        let result = super::read_rpf(&path);
+        let _ = std::fs::remove_file(&path);
+        let imported = result.expect("native RPF7 importer should read a valid archive");
+        assert_eq!(imported.assets.len(), 1);
+        assert_eq!(imported.assets[0].name, "data/vehicles.meta");
+        assert_eq!(imported.ignored, 1);
+    }
+
+    #[test]
+    fn encrypted_archives_are_rejected_before_extraction() {
+        let path = std::env::temp_dir().join(format!(
+            "kurogane-encrypted-rpf-{}-{:?}.rpf",
+            std::process::id(), std::thread::current().id()
+        ));
+        let mut header = vec![0_u8; 16];
+        header[0..4].copy_from_slice(&0x52504637_u32.to_le_bytes());
+        header[12..16].copy_from_slice(&0x0FFFFFF9_u32.to_le_bytes());
+        std::fs::write(&path, &header).expect("write test header");
+        let result = super::read_rpf(&path);
+        let _ = std::fs::remove_file(&path);
+        assert!(result.unwrap_err().contains("zaszyfrowany"));
+    }
+
+    #[test]
     fn classifies_archive_entries() {
         assert_eq!(output_name("x64/vehicles.rpf/supercar.yft").as_deref(), Some("stream/supercar.yft"));
         assert_eq!(output_name("common/data/handling.meta").as_deref(), Some("data/handling.meta"));
