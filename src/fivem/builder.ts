@@ -134,6 +134,7 @@ export function validate(assets:VehicleAsset[],c:VehicleConfig):Check[] {
   if(!Number.isFinite(value)||value<def.min||value>def.max) error('Poza zakresem: '+def.label);
  }
  if(c.handlingValues.tractionMin>c.handlingValues.tractionMax) error('Przyczepność min nie może być większa od maksymalnej.');
+ if(!Number.isInteger(c.handlingValues.gears)) error('Liczba biegów musi być liczbą całkowitą.');
  const base=assets.filter(a=>a.name.endsWith('.yft')&&!a.name.endsWith('_hi.yft'));
  if(!base.some(a=>a.name==='stream/'+c.spawn+'.yft')) error('Brakuje stream/'+c.spawn+'.yft. Bez modelu GTA addon nie może działać.');
  if(base.length>1) error('Wczytano kilka modeli .yft. Eksport jest dla jednego addonu — rozdziel paczkę.');
