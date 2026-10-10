@@ -8,6 +8,8 @@ export type ViewPreset='perspective'|'front'|'back'|'left'|'right'|'top'|'bottom
 export type TransformMode = 'translate' | 'rotate' | 'scale';
 type Props = {
   root: THREE.Group;
+  surfaceMode?: boolean;
+  onSurfaceHit?: (mesh:THREE.Mesh,point:THREE.Vector3,normal:THREE.Vector3)=>void;
   selectedId: string | null;
   mode: TransformMode;
   focusToken: number;
@@ -31,13 +33,15 @@ type Props = {
 };
 type ThreeContext = { renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera | THREE.OrthographicCamera; controls: OrbitControls; transform: TransformControls; marker: THREE.Mesh; root: THREE.Group; scene: THREE.Scene; fit: () => void; setView:(preset:ViewPreset)=>void };
 
-export default function Viewport({ root, selectedId, mode, focusToken, onSelect, onChange, vertexMode = false, selectedVertexIndex = null, geometryRevision = 0, onVertexSelect, faceMode=false, selectedFaces=[], onFaceSelect, onBeforeChange, linkedVertices=false, symmetry=false, softRadius=0, viewPreset="perspective",wireframe=false,snap=false,localSpace=false }: Props) {
+export default function Viewport({ root, selectedId, mode, focusToken, onSelect, onChange, vertexMode = false, selectedVertexIndex = null, geometryRevision = 0, onVertexSelect, faceMode=false, selectedFaces=[], onFaceSelect, onBeforeChange, linkedVertices=false, symmetry=false, softRadius=0, viewPreset="perspective",wireframe=false,snap=false,localSpace=false,surfaceMode=false,onSurfaceHit }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ThreeContext | null>(null);
   const onSelectRef = useRef(onSelect);
   const onChangeRef = useRef(onChange);
   const onVertexSelectRef=useRef(onVertexSelect);
   const vertexState=useRef({enabled:vertexMode,selectedId,index:selectedVertexIndex});
+  const surfaceState=useRef({enabled:surfaceMode,onHit:onSurfaceHit});
+  surfaceState.current={enabled:surfaceMode,onHit:onSurfaceHit};
   const editing=useRef({onBeforeChange,linkedVertices,symmetry,softRadius});
   editing.current={onBeforeChange,linkedVertices,symmetry,softRadius};
   const faceState=useRef({faceMode,onFaceSelect});
@@ -151,7 +155,28 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
       if (!rect.width || !rect.height) return;
       pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(root.children, true).find(i => {if(!(i.object instanceof THREE.Mesh))return false;let object:THREE.Object3D|null=i.object;while(object){if(!object.visible)return false;object=object.parent;}return true;});
+      const hit = raycaster.intersectObjects(root.children, true).find(i => {
+        if(!(i.object instanceof THREE.Mesh))return false;
+        let object:THREE.Object3D|null=i.object;
+        while(object){if(!object.visible)return false;object=object.parent;}
+        return true;
+      });
+      if(surfaceState.current.enabled){
+        // Decal layers do not obstruct selection of the underlying vehicle mesh.
+        const surface=raycaster.intersectObjects(root.children,true).find(i=>{
+          if(!(i.object instanceof THREE.Mesh)||!i.face||i.object.userData.kurogane?.kind==='decal')return false;
+          let object:THREE.Object3D|null=i.object;
+          while(object){if(!object.visible)return false;object=object.parent;}
+          return true;
+        });
+        if(surface?.object instanceof THREE.Mesh && surface.face){
+          surface.object.updateWorldMatrix(true,false);
+          const matrix=new THREE.Matrix3().getNormalMatrix(surface.object.matrixWorld);
+          const worldNormal=surface.face.normal.clone().applyMatrix3(matrix).normalize();
+          surfaceState.current.onHit?.(surface.object,surface.point.clone(),worldNormal);
+        }
+        return;
+      }
       if(faceState.current.faceMode){
         faceState.current.onFaceSelect?.(hit?.object.uuid??null,hit?.faceIndex??null,e.shiftKey);
         return;
