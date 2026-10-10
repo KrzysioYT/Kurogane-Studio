@@ -7,6 +7,8 @@ import type { TransformMode } from './components/Viewport';
 import { tools, sections } from './catalog';
 import { clearModel, createDemoCar, prepareModel } from './lib/demo';
 import { exportGLB, importModel, saveGLB } from './lib/io';
+import { createPrimitive, copyMesh, mirrorGeometry, recalcNormals, setVertex, vertexCount, PRIMITIVE_KINDS } from './lib/geometry';
+import type { PrimitiveKind } from './lib/geometry';
 
 type Axis = 'x' | 'y' | 'z';
 type TransformProp = 'position' | 'rotation' | 'scale';
@@ -49,6 +51,9 @@ export default function App() {
   const textureRef = useRef<HTMLInputElement>(null);
   const [revision, setRevision] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [vertexMode, setVertexMode] = useState(false);
+  const [vertexIndex, setVertexIndex] = useState<number | null>(null);
+  const [primitiveKind, setPrimitiveKind] = useState<PrimitiveKind>('cube');
   const [activeToolId, setActiveToolId] = useState('vehicle-editor-v2');
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState<TransformMode>('translate');
@@ -67,7 +72,8 @@ export default function App() {
   const parts = useMemo(() => allParts(root), [root, revision]);
   const meshes = useMemo(() => countMeshes(root), [root, revision]);
   const touch = useCallback(() => setRevision(n => n + 1), []);
-  const select = useCallback((id: string | null) => setSelectedId(id), []);
+  const select = useCallback((id: string | null) => {setSelectedId(id);setVertexIndex(null);}, []);
+  const onVertexSelect = useCallback((id:string|null,index:number|null)=>{setSelectedId(id);setVertexIndex(index);},[]);
 
   const openFile = useCallback(async (file: File) => {
     setBusy(true);
@@ -75,7 +81,7 @@ export default function App() {
     try {
       const object = await importModel(file);
       prepareModel(object);
-      setSelectedId(null);
+      setSelectedId(null);setVertexIndex(null);setVertexMode(false);
       clearModel(root);
       root.add(object);
       setModelName(file.name.replace(/\.[^.]*$/, ''));
@@ -97,7 +103,7 @@ export default function App() {
   };
 
   const loadDemo = () => {
-    setSelectedId(null);
+    setSelectedId(null);setVertexIndex(null);setVertexMode(false);
     clearModel(root);
     root.add(createDemoCar());
     setModelName('Kurogane Concept');
@@ -177,6 +183,29 @@ export default function App() {
     }
   };
 
+  const addPrimitive = () => {
+    const mesh=createPrimitive(primitiveKind);
+    root.add(mesh);setVertexMode(false);setVertexIndex(null);setSelectedId(mesh.uuid);
+    touch();setStatus('Dodano bryłę do sceny. Możesz teraz zmienić jej geometrię w trybie wierzchołków.');
+  };
+  const duplicateSelected = () => {
+    if(!selectedMesh)return;
+    const clone=copyMesh(selectedMesh);
+    selectedMesh.parent?.add(clone);
+    setSelectedId(clone.uuid);setVertexIndex(null);setVertexMode(false);touch();
+    setStatus('Utworzono niezależną kopię wybranej części.');
+  };
+  const modifyGeometry = (action:'mirrorX'|'mirrorY'|'mirrorZ'|'normals') => {
+    if(!selectedMesh)return;
+    if(action==='normals')recalcNormals(selectedMesh);
+    else mirrorGeometry(selectedMesh,action==='mirrorX'?'x':action==='mirrorY'?'y':'z');
+    touch();setStatus('Zaktualizowano geometrię. Zapisuj jako GLB, nie YFT.');
+  };
+  const updateVertex = (axis:Axis,value:number) => {
+    if(!selectedMesh||vertexIndex===null)return;
+    try {setVertex(selectedMesh,vertexIndex,axis,value);touch();}
+    catch(error){setStatus('Błąd wierzchołka: '+String(error));}
+  };
   const renameSelected = (name: string) => {
     if (!selected) return;
     selected.name = name;
@@ -192,7 +221,7 @@ export default function App() {
         (Array.isArray(object.material) ? object.material : [object.material]).forEach(material => material.dispose());
       }
     });
-    setSelectedId(null);
+    setSelectedId(null);setVertexIndex(null);
     touch();
     setStatus('Usunięto zaznaczony element ze sceny.');
   };
@@ -209,7 +238,7 @@ export default function App() {
   return <div className="shell" onDragOver={event => { event.preventDefault(); setDragActive(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragActive(false); }} onDrop={onDrop}>
     <header className={fiveMMode ? "topbar fivem-topbar" : "topbar"}>
       <Brand />
-      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.7.0</span></div>
+      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.8.0</span></div>
       <div className="header-actions">
         <button className={"button workspace-toggle " + (fiveMMode ? "current" : "")} onClick={() => setFiveMMode(current => !current)}>{fiveMMode ? "← Edytor 3D" : "🚘 FiveM Add-on"}</button>
         <span className="local-pill"><span className="online-dot" /> LOCAL / WINDOWS</span>
@@ -256,11 +285,24 @@ export default function App() {
             <div><div className="eyebrow">EDYTOR PRZESTRZENI 3D / BETA</div><h1>{modelName}</h1><p>Wybierz część pojazdu i edytuj geometrię, położenie lub materiał.</p></div>
             <div className="viewport-options"><span className="chip">◈ Perspektywa</span><button className="small-button" onClick={() => setFocusToken(t => t + 1)} title="Dopasuj widok (F)">⊡ Dopasuj</button></div>
           </div>
+          <div className="modeler-toolbar">
+            <label>Nowa bryła <select aria-label="Rodzaj bryły" value={primitiveKind} onChange={event=>setPrimitiveKind(event.target.value as PrimitiveKind)}>
+              {PRIMITIVE_KINDS.map(kind=><option key={kind.key} value={kind.key}>{kind.name}</option>)}
+            </select></label>
+            <button onClick={addPrimitive}>＋ Dodaj bryłę</button>
+            <button disabled={!selectedMesh} onClick={duplicateSelected}>▣ Duplikuj część</button>
+            <button className={vertexMode?'is-active':''} onClick={()=>{setVertexMode(v=>!v);setVertexIndex(null);setMode('translate')}} disabled={!selectedMesh}>
+              {vertexMode?'● Wierzchołki ON':'○ Edycja wierzchołków'}
+            </button>
+            <span>Format projektu: GLB — nie YFT</span>
+          </div>
           <div className="viewport-wrap">
-            <Viewport root={root} selectedId={selectedId} mode={mode} focusToken={focusToken} onSelect={select} onChange={touch} />
+            <Viewport root={root} selectedId={selectedId} mode={mode} focusToken={focusToken}
+              onSelect={select} onChange={touch} vertexMode={vertexMode} selectedVertexIndex={vertexIndex}
+              geometryRevision={revision} onVertexSelect={onVertexSelect}/>
             <div className="viewport-label">SCENE VIEWPORT <span>● REALTIME</span></div>
             <div className="gizmo-buttons">
-              {([['translate', '↔', 'W'], ['rotate', '⟳', 'E'], ['scale', '⤢', 'R']] as const).map(([value, symbol, shortcut]) =>
+              {!vertexMode&&([['translate', '↔', 'W'], ['rotate', '⟳', 'E'], ['scale', '⤢', 'R']] as const).map(([value, symbol, shortcut]) =>
                 <button title={modeNames[value] + ' (' + shortcut + ')'} className={mode === value ? 'selected' : ''} key={value} onClick={() => setMode(value)}>{symbol}<small>{shortcut}</small></button>)}
             </div>
             <div className="viewport-bottom"><span>◌ Orbit: LPM poza modelem / ŚPM</span><span>⤢ Pan: PPM</span><span>⊕ Zoom: scroll</span></div>
@@ -301,11 +343,32 @@ export default function App() {
               <label className="range-field"><span>Szorstkość <strong>{Math.round(mat.roughness * 100)}%</strong></span><input type="range" min="0" max="1" step="0.01" value={mat.roughness} onChange={event => updateMaterial('roughness', Number(event.target.value))}/></label>
             </> : <p className="muted">Materiał typu PBR niedostępny. Wybierz pojedynczy mesh.</p>}
           </div>
+          {selectedMesh && <div className="property-block vertex-properties">
+            <h3>Geometria 3D <span>{vertexCount(selectedMesh)} wierzchołków</span></h3>
+            <label className="vertex-checkbox">
+              <input type="checkbox" checked={vertexMode} onChange={event=>{setVertexMode(event.target.checked);setVertexIndex(null);setMode('translate')}}/>
+              Wybieraj wierzchołki myszką
+            </label>
+            {vertexMode && vertexIndex!==null && vertexIndex<vertexCount(selectedMesh) && <div className="vertex-editor">
+              <div>Wierzchołek #{vertexIndex}</div>
+              <div className="axis-row">{axes.map(axis=><label key={axis} className={'axis axis-'+axis}><span>{axis.toUpperCase()}</span>
+                <input type="number" step="0.05" value={Number((selectedMesh.geometry.getAttribute('position') as THREE.BufferAttribute).getComponent(vertexIndex,axis==='x'?0:axis==='y'?1:2).toFixed(4))}
+                  onChange={event=>updateVertex(axis,Number(event.target.value))}/></label>)}</div>
+              <small>Przeciągnij pomarańczowy manipulator lub podaj współrzędne.</small>
+            </div>}
+            <div className="geometry-actions">
+              <button onClick={()=>modifyGeometry('normals')}>Przelicz normalne</button>
+              <button onClick={()=>modifyGeometry('mirrorX')}>Lustrzane X</button>
+              <button onClick={()=>modifyGeometry('mirrorY')}>Lustrzane Y</button>
+              <button onClick={()=>modifyGeometry('mirrorZ')}>Lustrzane Z</button>
+            </div>
+            <p className="muted">Edycja wierzchołków i brył zmienia model 3D. Eksport do GLB nie tworzy kompletnego pliku YFT do FiveM.</p>
+          </div>}
           <div className="property-block"><button className="danger-button" onClick={removeSelected}>✕ Usuń wybrany element</button></div>
         </> : <div className="inspector-empty"><div className="orbit-illustration">◇</div><h3>Brak zaznaczenia</h3><p>Kliknij element modelu w widoku 3D lub wybierz go w zakładce Hierarchia.</p></div>}
         <div className="inspector-note"><div className="section-title">INFORMACJE</div><div className="stat-row"><span>Elementy 3D</span><strong>{meshes}</strong></div><div className="stat-row"><span>Format wyjścia</span><strong>GLB</strong></div><div className="stat-row"><span>Format GTA V</span><strong className="warning">W planie</strong></div></div>
       </aside>
     </div>
-    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.7.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
+    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.8.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
   </div>;
 }
