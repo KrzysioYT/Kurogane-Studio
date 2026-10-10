@@ -106,13 +106,16 @@ export default function YftInspector({files}:Props){
      texture.flipY=true;
      texture.needsUpdate=true;
      let count=0;
+     const replacedTextures=new Set<THREE.Texture>();
      for(const object of root.children){
        if(!(object instanceof THREE.Mesh) || object.userData.shaderId!==shader)continue;
        const mat=object.material;
        if(!(mat instanceof THREE.MeshStandardMaterial))continue;
+       if(mat.map)replacedTextures.add(mat.map);
        mat.map=texture;mat.color.set('#ffffff');mat.needsUpdate=true;count++;
      }
      if(!count){texture.dispose();throw new Error('Wybrany shader nie ma meshów do podglądu.');}
+     for(const old of replacedTextures)old.dispose();
      setMessage('Nałożono '+textureName+' na '+count+' meshów shadera '+shader+'. To ręczny podgląd UV, nie zapis zmian w YFT.');
    }catch(error){setMessage('Błąd podglądu UV: '+String(error));}
    finally{setBusy(false);}
