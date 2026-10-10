@@ -9,7 +9,7 @@ export type TransformMode = 'translate' | 'rotate' | 'scale';
 type Props = {
   root: THREE.Group;
   surfaceMode?: boolean;
-  onSurfaceHit?: (mesh:THREE.Mesh,point:THREE.Vector3,normal:THREE.Vector3)=>void;
+  onSurfaceHit?: (mesh:THREE.Mesh,point:THREE.Vector3,normal:THREE.Vector3,uv:THREE.Vector2|null)=>void;
   selectedId: string | null;
   mode: TransformMode;
   focusToken: number;
@@ -173,7 +173,7 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
           surface.object.updateWorldMatrix(true,false);
           const matrix=new THREE.Matrix3().getNormalMatrix(surface.object.matrixWorld);
           const worldNormal=surface.face.normal.clone().applyMatrix3(matrix).normalize();
-          surfaceState.current.onHit?.(surface.object,surface.point.clone(),worldNormal);
+          surfaceState.current.onHit?.(surface.object,surface.point.clone(),worldNormal,surface.uv?.clone()??null);
         }
         return;
       }
