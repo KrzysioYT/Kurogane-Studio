@@ -1,7 +1,7 @@
 //! Non-destructive YFT reader for native, local 3D inspection of GTA V vehicles.
 //! The output is intentionally read-only. Re-exporting YFT requires a separate
 //! validated serializer and is NOT emulated by writing a glTF file.
-use rage_formats::{parse_drawables, DrawableKind, LodLevel};
+use rage_formats::{parse_drawables, DrawableKind, LodLevel, ShaderParameterValue};
 use serde::Serialize;
 
 const MAX_INPUT: usize = 160 * 1024 * 1024;
@@ -18,6 +18,7 @@ pub struct PreviewMesh {
     uv:Vec<f32>,
     indices:Vec<u32>,
     shader_id:u16,
+    suggested_texture:Option<String>,
 }
 fn extract_preview(bytes:&[u8])->Result<Vec<PreviewMesh>,String>{
  if bytes.len()<16 || bytes.len()>MAX_INPUT || !bytes.starts_with(b"RSC7"){
@@ -48,12 +49,22 @@ fn extract_preview(bytes:&[u8])->Result<Vec<PreviewMesh>,String>{
          normals.extend([vertex.normal.x,vertex.normal.z,-vertex.normal.y]);
          uv.extend([vertex.texcoord0.x,1.0-vertex.texcoord0.y]);
        }
+       let shader_index=model.shader_mapping.get(geometry.shader_id as usize)
+         .copied().unwrap_or(geometry.shader_id);
+       let suggested_texture=drawable.shader_group.as_ref()
+         .and_then(|group|group.shaders.get(shader_index as usize)
+           .or_else(||group.shaders.get(geometry.shader_id as usize)))
+         .and_then(|shader|shader.parameters.iter().find_map(|param|match &param.value{
+           ShaderParameterValue::Texture{name,..} if !name.is_empty()=>Some(name.clone()),
+           _=>None,
+         }));
        total_vertices+=positions.len()/3;
        total_indices+=count;
        out.push(PreviewMesh{
          name:format!("{} / model {} / mesh {}",entry.name,model_i+1,geometry_i+1),
          vertices:positions,normals,uv,indices:ib.indices[..count].to_vec(),
          shader_id:geometry.shader_id,
+         suggested_texture,
        });
      }
    }
