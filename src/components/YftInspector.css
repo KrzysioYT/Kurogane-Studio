@@ -13,3 +13,5 @@
 .yft-uv-controls select{width:100%;min-width:0;background:#203846;color:#e2f0f2;border:1px solid #3e6577;border-radius:5px;padding:9px;font-size:11px}
 .yft-uv-controls button{white-space:nowrap}
 @media(max-width:1000px){.yft-uv-controls label{min-width:100%}}
+
+.yft-shader-hint{font-size:11px;color:#8ec4c9;border:1px solid #3b626b;background:#1d3a43;padding:8px 10px;border-radius:5px;overflow-wrap:anywhere;max-width:230px}
