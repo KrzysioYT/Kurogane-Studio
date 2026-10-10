@@ -11,6 +11,9 @@ type Props = {
   focusToken: number;
   onSelect: (id: string | null) => void;
   onChange: () => void;
+  faceMode?: boolean;
+  selectedFace?: number | null;
+  onFaceSelect?: (id:string|null,face:number|null)=>void;
   vertexMode?: boolean;
   selectedVertexIndex?: number | null;
   geometryRevision?: number;
@@ -18,13 +21,15 @@ type Props = {
 };
 type ThreeContext = { renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera; controls: OrbitControls; transform: TransformControls; marker: THREE.Mesh; root: THREE.Group; scene: THREE.Scene; fit: () => void };
 
-export default function Viewport({ root, selectedId, mode, focusToken, onSelect, onChange, vertexMode = false, selectedVertexIndex = null, geometryRevision = 0, onVertexSelect }: Props) {
+export default function Viewport({ root, selectedId, mode, focusToken, onSelect, onChange, vertexMode = false, selectedVertexIndex = null, geometryRevision = 0, onVertexSelect, faceMode=false, selectedFace=null, onFaceSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ThreeContext | null>(null);
   const onSelectRef = useRef(onSelect);
   const onChangeRef = useRef(onChange);
   const onVertexSelectRef=useRef(onVertexSelect);
   const vertexState=useRef({enabled:vertexMode,selectedId,index:selectedVertexIndex});
+  const faceState=useRef({faceMode,onFaceSelect});
+  faceState.current={faceMode,onFaceSelect};
   useEffect(() => { onSelectRef.current = onSelect; onChangeRef.current = onChange; onVertexSelectRef.current=onVertexSelect;vertexState.current={enabled:vertexMode,selectedId,index:selectedVertexIndex}; }, [onSelect, onChange, onVertexSelect, vertexMode, selectedId, selectedVertexIndex]);
 
   useEffect(() => {
@@ -130,6 +135,10 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
       pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObjects(root.children, true).find(i => i.object.visible && i.object instanceof THREE.Mesh);
+      if(faceState.current.faceMode){
+        faceState.current.onFaceSelect?.(hit?.object.uuid??null,hit?.faceIndex??null);
+        return;
+      }
       if(vertexState.current.enabled){
         if(hit?.face && hit.object instanceof THREE.Mesh){
           const mesh=hit.object;
@@ -193,6 +202,7 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
     const context = ctxRef.current;
     if (!context) return;
     const object = selectedId ? root.getObjectByProperty('uuid', selectedId) : undefined;
+    if(faceMode){context.marker.visible=false;context.transform.detach();return;}
     if(vertexMode && object instanceof THREE.Mesh && selectedVertexIndex!==null){
       const pos=object.geometry.getAttribute('position');
       if(pos && selectedVertexIndex>=0 && selectedVertexIndex<pos.count){
@@ -207,9 +217,26 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
       if(object)context.transform.attach(object);
       else context.transform.detach();
     }
-  }, [root, selectedId, vertexMode, selectedVertexIndex, geometryRevision]);
+  }, [root, selectedId, vertexMode, selectedVertexIndex, geometryRevision, faceMode]);
+
+  useEffect(() => {
+    const object=selectedId?root.getObjectByProperty('uuid',selectedId):null;
+    if(!faceMode || selectedFace===null || !(object instanceof THREE.Mesh))return;
+    const source=object.geometry, position=source.getAttribute('position'), index=source.index;
+    if(!position || selectedFace*3+2 >= (index?.count??position.count))return;
+    const points:number[]=[];
+    for(let corner=0;corner<3;corner++){
+      const i=index?index.getX(selectedFace*3+corner):selectedFace*3+corner;
+      points.push(position.getX(i),position.getY(i),position.getZ(i));
+    }
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(points,3));
+    const material=new THREE.MeshBasicMaterial({color:0xffaa33,side:THREE.DoubleSide,transparent:true,opacity:.65,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+    const overlay=new THREE.Mesh(geometry,material); overlay.raycast=()=>{};object.updateWorldMatrix(true,false);overlay.matrixAutoUpdate=false;overlay.matrix.copy(object.matrixWorld);const scene=ctxRef.current?.scene;scene?.add(overlay);
+    return()=>{scene?.remove(overlay);geometry.dispose();material.dispose();};
+  },[root,selectedId,selectedFace,faceMode,geometryRevision]);
 
   useEffect(() => { ctxRef.current?.transform.setMode(vertexMode?'translate':mode); }, [mode,vertexMode]);
   useEffect(() => { ctxRef.current?.fit(); }, [focusToken]);
   return <div ref={containerRef} className="viewport" aria-label="Edytor sceny 3D"/>;
 }
+

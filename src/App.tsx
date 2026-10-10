@@ -8,6 +8,7 @@ import { tools, sections } from './catalog';
 import { clearModel, createDemoCar, prepareModel } from './lib/demo';
 import { exportGLB, importModel, saveGLB } from './lib/io';
 import { createPrimitive, copyMesh, mirrorGeometry, recalcNormals, setVertex, vertexCount, PRIMITIVE_KINDS } from './lib/geometry';
+import { editFace } from './lib/topology';
 import type { PrimitiveKind } from './lib/geometry';
 
 type Axis = 'x' | 'y' | 'z';
@@ -51,6 +52,15 @@ export default function App() {
   const textureRef = useRef<HTMLInputElement>(null);
   const [revision, setRevision] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [faceMode,setFaceMode]=useState(false);
+  const [faceIndex,setFaceIndex]=useState<number|null>(null);
+  const [extrudeDistance,setExtrudeDistance]=useState(.1);
+  const geometryUndo=useRef<{mesh:THREE.Mesh;geometry:THREE.BufferGeometry}[]>([]);
+  const geometryRedo=useRef<{mesh:THREE.Mesh;geometry:THREE.BufferGeometry}[]>([]);
+  const clearGeometryHistory=()=>{
+    for(const entry of [...geometryUndo.current,...geometryRedo.current])entry.geometry.dispose();
+    geometryUndo.current=[];geometryRedo.current=[];
+  };
   const [vertexMode, setVertexMode] = useState(false);
   const [vertexIndex, setVertexIndex] = useState<number | null>(null);
   const [primitiveKind, setPrimitiveKind] = useState<PrimitiveKind>('cube');
@@ -72,7 +82,7 @@ export default function App() {
   const parts = useMemo(() => allParts(root), [root, revision]);
   const meshes = useMemo(() => countMeshes(root), [root, revision]);
   const touch = useCallback(() => setRevision(n => n + 1), []);
-  const select = useCallback((id: string | null) => {setSelectedId(id);setVertexIndex(null);}, []);
+  const select = useCallback((id: string | null) => {setSelectedId(id);setVertexIndex(null);setFaceIndex(null);}, []);
   const onVertexSelect = useCallback((id:string|null,index:number|null)=>{setSelectedId(id);setVertexIndex(index);},[]);
 
   const openFile = useCallback(async (file: File) => {
@@ -82,6 +92,7 @@ export default function App() {
       const object = await importModel(file);
       prepareModel(object);
       setSelectedId(null);setVertexIndex(null);setVertexMode(false);
+      clearGeometryHistory();setFaceMode(false);setFaceIndex(null);
       clearModel(root);
       root.add(object);
       setModelName(file.name.replace(/\.[^.]*$/, ''));
@@ -104,6 +115,7 @@ export default function App() {
 
   const loadDemo = () => {
     setSelectedId(null);setVertexIndex(null);setVertexMode(false);
+    clearGeometryHistory();setFaceMode(false);setFaceIndex(null);
     clearModel(root);
     root.add(createDemoCar());
     setModelName('Kurogane Concept');
@@ -201,6 +213,28 @@ export default function App() {
     else mirrorGeometry(selectedMesh,action==='mirrorX'?'x':action==='mirrorY'?'y':'z');
     touch();setStatus('Zaktualizowano geometrię. Zapisuj jako GLB, nie YFT.');
   };
+  const faceOperation=(action:'extrude'|'subdivide'|'delete')=>{
+    if(!selectedMesh || faceIndex===null)return;
+    const previous=selectedMesh.geometry;
+    try{
+      editFace(selectedMesh,faceIndex,action,extrudeDistance);
+      geometryUndo.current.push({mesh:selectedMesh,geometry:previous.clone()});
+      if(geometryUndo.current.length>20)geometryUndo.current.shift()?.geometry.dispose();
+      geometryRedo.current.forEach(entry=>entry.geometry.dispose());geometryRedo.current=[];
+      setFaceIndex(null);setVertexIndex(null);touch();
+      setStatus('Zmieniono topologię. Wynik zapiszesz w GLB. Cofnij topologię przywraca poprzednią siatkę części.');
+    }catch(error){setStatus(String(error));}
+  };
+  const undoTopology=(redo=false)=>{
+    const from=redo?geometryRedo.current:geometryUndo.current;
+    const to=redo?geometryUndo.current:geometryRedo.current;
+    const entry=from.pop();if(!entry)return;
+    if(root.getObjectByProperty('uuid',entry.mesh.uuid)!==entry.mesh){entry.geometry.dispose();touch();return;}
+    to.push({mesh:entry.mesh,geometry:entry.mesh.geometry.clone()});
+    entry.mesh.geometry=entry.geometry;
+    setSelectedId(entry.mesh.uuid);setFaceIndex(null);setVertexIndex(null);touch();
+    setStatus('Przywrócono geometrię części. Historia obejmuje operacje topologii.');
+  };
   const updateVertex = (axis:Axis,value:number) => {
     if(!selectedMesh||vertexIndex===null)return;
     try {setVertex(selectedMesh,vertexIndex,axis,value);touch();}
@@ -274,7 +308,7 @@ export default function App() {
           <div className="section-title">ELEMENTY MODELU</div>
           {parts.map(({ object, depth }) => <div className={'hierarchy-row ' + (selectedId === object.uuid ? 'selected' : '')} key={object.uuid} style={{ paddingLeft: Math.min(12 + depth * 8, 48) }}>
             <button className="eye" title={object.visible ? 'Ukryj' : 'Pokaż'} onClick={() => { object.visible = !object.visible; touch(); }}>{object.visible ? '◉' : '○'}</button>
-            <button className="hier-name" title={object.name} onClick={() => setSelectedId(object.uuid)}>▱ {object.name || 'Mesh'}</button>
+            <button className="hier-name" title={object.name} onClick={() => select(object.uuid)}>▱ {object.name || 'Mesh'}</button>
           </div>)}
           {!parts.length && <p className="empty-hint">Zaimportuj model, by zobaczyć jego części.</p>}
         </div>}
@@ -291,15 +325,18 @@ export default function App() {
             </select></label>
             <button onClick={addPrimitive}>＋ Dodaj bryłę</button>
             <button disabled={!selectedMesh} onClick={duplicateSelected}>▣ Duplikuj część</button>
-            <button className={vertexMode?'is-active':''} onClick={()=>{setVertexMode(v=>!v);setVertexIndex(null);setMode('translate')}} disabled={!selectedMesh}>
+            <button className={vertexMode?'is-active':''} onClick={()=>{setFaceMode(false);setFaceIndex(null);setVertexMode(v=>!v);setVertexIndex(null);setMode('translate')}} disabled={!selectedMesh}>
               {vertexMode?'● Wierzchołki ON':'○ Edycja wierzchołków'}
             </button>
+            <button className={faceMode?'is-active':''} onClick={()=>{setFaceMode(v=>!v);setVertexMode(false);setFaceIndex(null);setVertexIndex(null)}}>Ściany</button>
+            <button disabled={!geometryUndo.current.length} onClick={()=>undoTopology()}>Cofnij topologię</button>
+            <button disabled={!geometryRedo.current.length} onClick={()=>undoTopology(true)}>Ponów topologię</button>
             <span>Format projektu: GLB — nie YFT</span>
           </div>
           <div className="viewport-wrap">
             <Viewport root={root} selectedId={selectedId} mode={mode} focusToken={focusToken}
               onSelect={select} onChange={touch} vertexMode={vertexMode} selectedVertexIndex={vertexIndex}
-              geometryRevision={revision} onVertexSelect={onVertexSelect}/>
+              geometryRevision={revision} onVertexSelect={onVertexSelect} faceMode={faceMode} selectedFace={faceIndex} onFaceSelect={(id,face)=>{setSelectedId(id);setFaceIndex(face)}}/>
             <div className="viewport-label">SCENE VIEWPORT <span>● REALTIME</span></div>
             <div className="gizmo-buttons">
               {!vertexMode&&([['translate', '↔', 'W'], ['rotate', '⟳', 'E'], ['scale', '⤢', 'R']] as const).map(([value, symbol, shortcut]) =>
@@ -345,8 +382,18 @@ export default function App() {
           </div>
           {selectedMesh && <div className="property-block vertex-properties">
             <h3>Geometria 3D <span>{vertexCount(selectedMesh)} wierzchołków</span></h3>
+            {faceMode && <div className="vertex-editor">
+              <p>{faceIndex===null?'Kliknij trójkąt powierzchni w widoku 3D.':`Ściana #${faceIndex}`}</p>
+              <label>Wyciąganie (m) <input aria-label="Odległość wyciągania" type="number" step="0.05" value={extrudeDistance} onChange={e=>setExtrudeDistance(Number(e.target.value))}/></label>
+              <div className="geometry-actions">
+                <button disabled={faceIndex===null} onClick={()=>faceOperation('extrude')}>Wyciągnij ścianę</button>
+                <button disabled={faceIndex===null} onClick={()=>faceOperation('subdivide')}>Podziel na 4</button>
+                <button disabled={faceIndex===null} onClick={()=>faceOperation('delete')}>Usuń ścianę</button>
+              </div>
+              <small>Operacje na pojedynczych trójkątach. Podział może tworzyć T-junctions; boczne ściany po wyciągnięciu wymagają nowego UV.</small>
+            </div>}
             <label className="vertex-checkbox">
-              <input type="checkbox" checked={vertexMode} onChange={event=>{setVertexMode(event.target.checked);setVertexIndex(null);setMode('translate')}}/>
+              <input type="checkbox" checked={vertexMode} onChange={event=>{setFaceMode(false);setFaceIndex(null);setVertexMode(event.target.checked);setVertexIndex(null);setMode('translate')}}/>
               Wybieraj wierzchołki myszką
             </label>
             {vertexMode && vertexIndex!==null && vertexIndex<vertexCount(selectedMesh) && <div className="vertex-editor">
@@ -372,3 +419,4 @@ export default function App() {
     <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.10.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
   </div>;
 }
+
