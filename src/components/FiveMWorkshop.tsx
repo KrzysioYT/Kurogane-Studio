@@ -7,6 +7,7 @@ import type { Check, VehicleConfig } from '../fivem/types';
 import { createAddonZip, generatedMetas, inferConfig, readAssets, validate } from '../fivem/builder';
 import type { ImportedAssets } from '../fivem/builder';
 import { fxManifest, vehicleNamesLua } from '../fivem/templates';
+import { pickRpfArchive } from '../fivem/rpf';
 
 type Page = 'identity'|'physics'|'files'|'code';
 const pages: {id:Page;label:string}[] = [
@@ -59,21 +60,40 @@ export default function FiveMWorkshop(){
  const change=(key:keyof VehicleConfig,value:string|boolean)=>{
    setConfig(previous=>({...previous,[key]:value}));
  };
+ const loadImported=(imported:ImportedAssets)=>{
+   setData(imported);
+   setConfig(previous=>inferConfig(imported.assets,{
+     ...DEFAULTS,author:previous.author,description:previous.description,version:previous.version,
+     keepExisting:previous.keepExisting,generateNames:previous.generateNames,
+     handlingValues:{...DEFAULTS.handlingValues}
+   }));
+   setPage('identity');
+   setMessage('Zaimportowano '+imported.assets.length+' plików. Sprawdź walidację przed eksportem.');
+ };
  const choose=async(files:File[])=>{
    if(working||files.length===0)return;
    setWorking(true);setMessage('Wczytywanie zasobów pojazdu…');
    try {
-     const imported=await readAssets(files);
-     setData(imported);
-     setConfig(previous=>inferConfig(imported.assets,{
-       ...DEFAULTS,author:previous.author,description:previous.description,version:previous.version,
-       keepExisting:previous.keepExisting,generateNames:previous.generateNames,handlingValues:{...DEFAULTS.handlingValues}
-     }));
-     setPage('identity');
-     setMessage('Zaimportowano '+imported.assets.length+' plików. Sprawdź walidację przed eksportem.');
+     // RPF must go through Rust so resource headers (RSC7) are rebuilt correctly.
+     if(files.some(file=>file.name.toLowerCase().endsWith('.rpf'))){
+       setMessage('Użyj przycisku Otwórz RPF7. Dialog Windows pozwala odczytać archiwum natywnie.');
+       return;
+     }
+     loadImported(await readAssets(files));
    } catch(error){
      setMessage('Błąd importu: '+String(error instanceof Error?error.message:error));
    } finally{setWorking(false);}
+ };
+ const importRpf=async()=>{
+   if(working)return;
+   setWorking(true);setMessage('Analizuję RPF7 i wyodrębniam pliki GTA...');
+   try{
+     const imported=await pickRpfArchive();
+     if(imported)loadImported(imported);
+     else setMessage('Anulowano wybór archiwum RPF.');
+   }catch(error){
+     setMessage('Błąd RPF: '+String(error instanceof Error?error.message:error));
+   }finally{setWorking(false);}
  };
  const onPick=(event:ChangeEvent<HTMLInputElement>)=>{
    const files=Array.from(event.currentTarget.files??[]);event.currentTarget.value='';
@@ -122,8 +142,8 @@ export default function FiveMWorkshop(){
  return <section className="addon-studio" onDrop={onDrop} onDragOver={onDrag} onDragLeave={(event)=>{event.preventDefault();event.stopPropagation();setDrop(false);}}>
   <div className="addon-head">
     <div><span className="eyebrow">KUROGANE STUDIO / FIVE M TOOLCHAIN</span>
-      <h1>FiveM Vehicle Workshop <span>0.2 ALPHA</span></h1>
-      <p>Od plików GTA do resource ZIP. Metadane, fizyka, manifest i walidacja — bez ręcznego XML.</p></div>
+      <h1>FiveM Vehicle Workshop <span>0.3 ALPHA</span></h1>
+      <p>RPF7 lub pliki GTA → addon FiveM ZIP. Metadane, fizyka i manifest bez ręcznego XML.</p></div>
     <button className="button primary" disabled={working||blockers>0} onClick={()=>void exportZip()}>
       {working?'Przetwarzanie…':'⇩ Eksportuj addon ZIP'}
     </button>
@@ -139,9 +159,12 @@ export default function FiveMWorkshop(){
     <div className="addon-primary">
       <div className={'addon-dropzone '+(drop?'dragging':'')}>
         <div className="drop-mark">⇧</div>
-        <div><strong>Dodaj pliki pojazdu GTA V</strong><p>Wybierz ZIP addonu lub zaznacz razem .yft / .ytd / .meta. Możesz też przeciągnąć pliki tutaj.</p></div>
-        <button className="button secondary" disabled={working} onClick={()=>fileRef.current?.click()}>Wybierz pliki</button>
-        <input ref={fileRef} type="file" hidden multiple accept=".zip,.yft,.ytd,.ydr,.ybn,.ytyp,.ymap,.meta" onChange={onPick}/>
+        <div><strong>Importuj pojazd GTA V</strong><p>Otwórz niezaszyfrowany RPF7 z autem albo załaduj ZIP / YFT / YTD / META. Po imporcie edytujesz ustawienia i eksportujesz addon.</p></div>
+        <div className="rpf-actions">
+          <button className="button primary" disabled={working} onClick={()=>void importRpf()}>▣ Otwórz RPF7</button>
+          <button className="button secondary" disabled={working} onClick={()=>fileRef.current?.click()}>ZIP / pliki</button>
+        </div>
+        <input ref={fileRef} type="file" hidden multiple accept=".zip,.yft,.ytd,.ydr,.ydd,.ybn,.ytyp,.ymap,.ycd,.meta" onChange={onPick}/>
       </div>
       {message&&<div className="addon-message" role="status">{message}</div>}
       <div className="addon-tabs">{pages.map(p=><button key={p.id} className={page===p.id?'active':''} onClick={()=>setPage(p.id)}>{p.label}</button>)}</div>
