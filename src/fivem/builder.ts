@@ -45,11 +45,12 @@ export async function readAssets(input: File[]): Promise<ImportedAssets> {
      const entries=Object.values(zip.files).filter(entry=>!entry.dir);
      if (entries.length>MAX_ENTRIES) throw new Error('ZIP ma zbyt dużo wpisów (maks. 600).');
      for (const entry of entries) {
-       const target=normalizeName(entry.name);
+       const rawName=(entry as typeof entry & {unsafeOriginalName?:string}).unsafeOriginalName ?? entry.name;
+       const target=normalizeName(rawName);
        if (!target) {ignored++;continue;}
        // JSZip decompresses a single accepted asset at a time; verify size afterwards.
        const bytes=await entry.async('uint8array');
-       await collect(entry.name,bytes,file.name);
+       await collect(rawName,bytes,file.name);
      }
    } else {
      await collect(file.name,new Uint8Array(await file.arrayBuffer()),file.name);
