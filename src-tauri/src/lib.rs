@@ -1,3 +1,5 @@
+mod rpf;
+
 /// Zapisuje gotowy GLB wyłącznie po wybraniu miejsca przez użytkownika.
 /// Modelu nie przesyłamy przez sieć; ograniczenie wielkości chroni pamięć procesu.
 #[tauri::command]
@@ -71,7 +73,7 @@ fn save_vehicle_zip(file_name: String, bytes: Vec<u8>) -> Result<bool, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_glb, save_vehicle_zip])
+        .invoke_handler(tauri::generate_handler![save_glb, save_vehicle_zip, rpf::import_rpf])
         .run(tauri::generate_context!())
         .expect("Nie można uruchomić Kurogane Studio");
 }
