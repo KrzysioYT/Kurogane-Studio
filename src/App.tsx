@@ -13,6 +13,7 @@ import ModelingPanel from './components/ModelingPanel';
 import {SceneHistory} from './lib/history';
 import {decodeProject,saveProject} from './lib/project';
 import {moveVertex} from './lib/modeling';
+import {createLogoDecal,loadLogoImage} from './lib/decal';
 import type { PrimitiveKind } from './lib/geometry';
 
 type Axis = 'x' | 'y' | 'z';
@@ -55,6 +56,12 @@ export default function App() {
   const appendImport=useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textureRef = useRef<HTMLInputElement>(null);
+  const logoRef=useRef<HTMLInputElement>(null);
+  const [logoTexture,setLogoTexture]=useState<THREE.CanvasTexture|null>(null);
+  const [logoMode,setLogoMode]=useState(false);
+  const [logoSize,setLogoSize]=useState(.65);
+  const [logoRotation,setLogoRotation]=useState(0);
+  const [logoOpacity,setLogoOpacity]=useState(1);
   const [revision, setRevision] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [faceMode,setFaceMode]=useState(false);
@@ -223,6 +230,30 @@ export default function App() {
     }
   };
 
+  const importLogo=async(file:File)=>{
+    if(busy)return;
+    setBusy(true);setStatus('Wczytuję logo i przygotowuję jego teksturę...');
+    try{
+      const texture=await loadLogoImage(file);
+      setLogoTexture(texture);setLogoMode(true);
+      setFaceMode(false);setVertexMode(false);setFaces([]);setVertexIndex(null);
+      setStatus('Logo '+file.name+' gotowe. Kliknij część karoserii w widoku 3D.');
+    }catch(error){setStatus('Nie można wczytać logo: '+String(error));}
+    finally{setBusy(false);}
+  };
+  const placeLogo=(mesh:THREE.Mesh,point:THREE.Vector3,normal:THREE.Vector3)=>{
+    if(!logoTexture){setStatus('Najpierw wczytaj logo PNG/JPG.');return;}
+    if(!checkpoint('Dodano logo 3D'))return;
+    try{
+      const decal=createLogoDecal({mesh,point,normal},logoTexture,{
+        width:logoSize,rotationDeg:logoRotation,opacity:logoOpacity
+      });
+      root.add(decal);
+      setSelectedId(decal.uuid);
+      setLogoMode(false);setFaces([]);setVertexIndex(null);touch();
+      setStatus('Logo 3D dodane jako edytowalna część. Projekt/GLB zachowuje grafikę; to nie jest zapis YTD.');
+    }catch(error){setStatus('Nie udało się umieścić logo: '+String(error));}
+  };
   const addPrimitive = () => {
     if(!checkpoint('Dodaj bryłę'))return;
     const mesh=createPrimitive(primitiveKind);
@@ -291,7 +322,7 @@ export default function App() {
       if(key==='w')setMode('translate');if(key==='e')setMode('rotate');if(key==='r')setMode('scale');
       if(key==='f')setFocusToken(n=>n+1);
       if(key==='delete'){event.preventDefault();removeSelected();}
-      if(key==='escape'){setSelectedId(null);setVertexIndex(null);setFaces([]);}
+      if(key==='escape'){setSelectedId(null);setVertexIndex(null);setFaces([]);setLogoMode(false);}
     };window.addEventListener('keydown',keydown);return()=>window.removeEventListener('keydown',keydown);
   });
 
@@ -300,7 +331,7 @@ export default function App() {
   return <div className="shell" onDragOver={event => { event.preventDefault(); setDragActive(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragActive(false); }} onDrop={onDrop}>
     <header className={fiveMMode ? "topbar fivem-topbar" : "topbar"}>
       <Brand />
-      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.11.0</span></div>
+      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.12.0</span></div>
       <div className="header-actions">
         <button className={"button workspace-toggle " + (fiveMMode ? "current" : "")} onClick={() => {setWorkshopOpened(true);setFiveMMode(current => !current);}}>{fiveMMode ? "← Edytor 3D" : "🚘 FiveM Add-on"}</button>
         <button className="button ghost" onClick={newWorkspace} disabled={busy}>Nowa scena</button>
@@ -362,6 +393,7 @@ export default function App() {
             </select></label>
             <button onClick={addPrimitive}>＋ Dodaj bryłę</button>
             <button disabled={!selectedMesh} onClick={duplicateSelected}>▣ Duplikuj część</button>
+            <button className={logoMode?'is-active':''} disabled={!logoTexture} onClick={()=>{setLogoMode(v=>!v);setFaceMode(false);setVertexMode(false);setFaces([]);}}>◎ {logoMode?'Kliknij karoserię':'Logo na karoserii'}</button>
             <button className={vertexMode?'is-active':''} onClick={()=>{setFaceMode(false);setFaces([]);setVertexMode(v=>!v);setVertexIndex(null);setMode('translate')}} disabled={!selectedMesh}>
               {vertexMode?'● Wierzchołki ON':'○ Edycja wierzchołków'}
             </button>
@@ -370,8 +402,19 @@ export default function App() {
             <button disabled={!history.current.canRedo} onClick={()=>restore(true)}>Ponów</button>
             <span>Projekt .kurogane / eksport GLB</span>
           </div>
+          <div className="decal-toolbar">
+            <button onClick={()=>logoRef.current?.click()}>↥ Wczytaj logo PNG / JPG</button>
+            <input hidden type="file" ref={logoRef} accept="image/png,image/jpeg,image/webp" onChange={e=>{
+              const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(file)void importLogo(file);
+            }}/>
+            <label>Szerokość (m) <input type="number" min=".025" max="10" step=".05" value={logoSize} onChange={e=>setLogoSize(Number(e.target.value))}/></label>
+            <label>Obrót (°) <input type="number" min="-3600" max="3600" step="15" value={logoRotation} onChange={e=>setLogoRotation(Number(e.target.value))}/></label>
+            <label>Krycie (%) <input type="range" min="5" max="100" step="5" value={logoOpacity*100} onChange={e=>setLogoOpacity(Number(e.target.value)/100)}/></label>
+            <span>{logoTexture?'Logo gotowe: kliknij przycisk „Logo na karoserii”':'Importuj logo, aby zacząć.'}</span>
+          </div>
           <div className="viewport-wrap">
             <Viewport root={root} selectedId={selectedId} mode={mode} focusToken={focusToken}
+              surfaceMode={logoMode} onSurfaceHit={placeLogo}
               onSelect={select} onChange={touch} vertexMode={vertexMode} selectedVertexIndex={vertexIndex}
               geometryRevision={revision} onVertexSelect={onVertexSelect} faceMode={faceMode} selectedFaces={faces}
               onFaceSelect={(id,face,additive)=>{setSelectedId(id);setFaces(current=>face===null?[]:additive&&id===selectedId?(current.includes(face)?current.filter(f=>f!==face):[...current,face]):[face])}}
@@ -451,7 +494,7 @@ export default function App() {
         <div className="inspector-note"><div className="section-title">INFORMACJE</div><div className="stat-row"><span>Elementy 3D</span><strong>{meshes}</strong></div><div className="stat-row"><span>Format wyjścia</span><strong>GLB</strong></div><div className="stat-row"><span>Format GTA V</span><strong className="warning">W planie</strong></div></div>
       </aside>
     </div>
-    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.11.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
+    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.12.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
   </div>;
 }
 
