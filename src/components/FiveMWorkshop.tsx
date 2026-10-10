@@ -63,6 +63,8 @@ export default function FiveMWorkshop(){
  const [editingError,setEditingError]=useState('');
  const [textureDirty,setTextureDirty]=useState(false);
  const [yftDirty,setYftDirty]=useState(false);
+ const yftBackups=useRef(new Map<string,Uint8Array>());
+ const [yftRevision,setYftRevision]=useState(0);
  const [projectRevision,setProjectRevision]=useState(0);
  const replaceRef=useRef<HTMLInputElement>(null);
  const fileRef=useRef<HTMLInputElement>(null);
@@ -78,6 +80,7 @@ export default function FiveMWorkshop(){
    setConfig(previous=>({...previous,[key]:value}));
  };
  const loadImported=(imported:ImportedAssets)=>{
+   yftBackups.current.clear();setYftRevision(v=>v+1);
    setData(imported);setTextureDirty(false);setYftDirty(false);setProjectRevision(n=>n+1);
    setActiveFile(null);setEditorText('');setSavedText('');setEditingError('');
    setConfig(previous=>inferConfig(imported.assets,{
@@ -178,6 +181,7 @@ export default function FiveMWorkshop(){
    if(editorText!==savedText){
      setMessage('Najpierw kliknij Zapisz w projekcie przy edytowanym pliku, potem eksportuj ZIP.');return;
    }
+   if(yftBackups.current.size>0 && !window.confirm('W projekcie znajduje się eksperymentalnie zmodyfikowany YFT. Model NIE jest przetestowany w FiveM. Eksportuj ZIP tylko na serwer testowy. Kontynuować?'))return;
    setWorking(true);setMessage('Generuję addon FiveM...');
    try{
      const bytes=await createAddonZip(data.assets,config,data.extraFiles??[]);
@@ -202,8 +206,21 @@ export default function FiveMWorkshop(){
    setMessage('Tekstura YTD zaktualizowana w pamięci projektu. Eksportuj ZIP, aby zapisać całe auto.');
  };
  const updateYft=(name:string,bytes:Uint8Array)=>{
+   const original=data.assets.find(file=>file.name===name);
+   if(!original)return;
+   if(!yftBackups.current.has(name))yftBackups.current.set(name,Uint8Array.from(original.bytes));
    setData(previous=>({...previous,assets:previous.assets.map(file=>file.name===name?{...file,bytes,source:'Eksperymentalna edycja YFT w Kurogane Studio'}:file)}));
-   setMessage('Zmodyfikowany YFT zapisany w pamięci projektu. Eksportuj ZIP wyłącznie na serwer testowy.');
+   setMessage('Zmodyfikowany YFT zapisany w projekcie. Możesz przywrócić oryginał; eksport ZIP tylko do testów.');
+ };
+ const restoreYft=(name:string)=>{
+   const original=yftBackups.current.get(name);
+   if(!original)return;
+   if((yftDirty||textureDirty) && !window.confirm('Masz niezapisane zmiany edytora. Przywrócenie modelu może je odrzucić. Kontynuować?'))return;
+   if(!window.confirm('Przywrócić oryginalny plik YFT sprzed pierwszej edycji w tym projekcie?'))return;
+   setData(previous=>({...previous,assets:previous.assets.map(file=>file.name===name?{...file,bytes:Uint8Array.from(original),source:'Oryginalny plik YFT'}:file)}));
+   yftBackups.current.delete(name);
+   setYftDirty(false);setYftRevision(v=>v+1);
+   setMessage('Przywrócono oryginalny '+name+'. Eksport ZIP zawiera poprzedni plik bez zmian geometrii.');
  };
  const preview=useMemo(()=>{
    try{
@@ -295,7 +312,13 @@ export default function FiveMWorkshop(){
       <div style={{display:page==='textures'?'block':'none'}}>
         <TextureStudio key={projectRevision} files={data.assets} onUpdate={updateYtd} onDirtyChange={setTextureDirty}/>
       </div>
-      <div style={{display:page==='model'?'block':'none'}}><YftInspector key={projectRevision} files={data.assets} onUpdateYft={updateYft} onDirtyChange={setYftDirty}/></div>
+      <div style={{display:page==='model'?'block':'none'}}>
+        {yftBackups.current.size>0&&<div className="addon-message" role="status">
+          Eksperymentalne zmiany geometrii YFT w projekcie. Przed użyciem sprawdź samochód na testowym serwerze.
+          {[...yftBackups.current.keys()].map(name=><button className="button secondary" key={name} style={{marginLeft:10}} onClick={()=>restoreYft(name)}>↶ Przywróć oryginał {name}</button>)}
+        </div>}
+        <YftInspector key={projectRevision+'-'+yftRevision} files={data.assets} onUpdateYft={updateYft} onDirtyChange={setYftDirty}/>
+      </div>
       {page==='files'&&<div className="addon-panel">
         <h2>Pliki projektu addonu</h2><p className="addon-help">Otwarty ZIP nie jest nadpisywany. Możesz zmieniać pliki tekstowe, podmieniać binaria i eksportować nowy ZIP. Oryginalnych plików modelu YFT nie modyfikujemy geometrycznie.</p>
         <div className="addon-message">Załadowano {allProjectFiles.length} plików, w tym {extraFiles.length} plików dodatkowych. {extraFiles.some(f=>/\\.(lua|js)$/i.test(f.name))?'Uwaga: paczka zawiera skrypty — sprawdź ich bezpieczeństwo przed instalacją na serwerze.':''}</div>
