@@ -41,9 +41,20 @@ export async function readAssets(input: File[]): Promise<ImportedAssets> {
  for (const file of input) {
    if (file.size > MAX_FILE) throw new Error('Plik '+file.name+' przekracza 150 MiB.');
    if (file.name.toLowerCase().endsWith('.zip')) {
-     const zip=await JSZip.loadAsync(await file.arrayBuffer(),{checkCRC32:true});
+     // Validate the uncompressed sizes before inflating any ZIP content.
+     // checkCRC32=true would eagerly decompress every entry, including ZIP bombs.
+     const zip=await JSZip.loadAsync(await file.arrayBuffer(),{checkCRC32:false});
      const entries=Object.values(zip.files).filter(entry=>!entry.dir);
      if (entries.length>MAX_ENTRIES) throw new Error('ZIP ma zbyt dużo wpisów (maks. 600).');
+     let declaredTotal=0;
+     for(const entry of entries) {
+       const declared=(entry as typeof entry & {_data?:{uncompressedSize?:number}})._data?.uncompressedSize;
+       if(typeof declared!=='number' || !Number.isSafeInteger(declared) || declared<0)
+         throw new Error('ZIP nie deklaruje poprawnego rozmiaru: '+entry.name);
+       if(declared>MAX_FILE) throw new Error('Za duży plik wewnątrz ZIP: '+entry.name);
+       declaredTotal+=declared;
+       if(declaredTotal>MAX_TOTAL) throw new Error('ZIP po rozpakowaniu przekracza 256 MiB.');
+     }
      for (const entry of entries) {
        const rawName=(entry as typeof entry & {unsafeOriginalName?:string}).unsafeOriginalName ?? entry.name;
        const target=normalizeName(rawName);
@@ -126,7 +137,13 @@ export function validate(assets:VehicleAsset[],c:VehicleConfig):Check[] {
  const base=assets.filter(a=>a.name.endsWith('.yft')&&!a.name.endsWith('_hi.yft'));
  if(!base.some(a=>a.name==='stream/'+c.spawn+'.yft')) error('Brakuje stream/'+c.spawn+'.yft. Bez modelu GTA addon nie może działać.');
  if(base.length>1) error('Wczytano kilka modeli .yft. Eksport jest dla jednego addonu — rozdziel paczkę.');
- if(assets.some(a=>a.name==='stream/'+c.spawn+'.yft')) ok('Model GTA .yft jest dopasowany do spawnu.');
+ if(assets.some(a=>a.name==='stream/'+c.spawn+'.yft')) {
+   const file=assets.find(a=>a.name==='stream/'+c.spawn+'.yft')!;
+   const signature=new TextDecoder().decode(file.bytes.subarray(0,4));
+   if(signature!=='RSC7'&&signature!=='RSC8')
+      warning('Nietypowy nagłówek pliku YFT. Sprawdź, czy to faktycznie binarny model GTA V.');
+   ok('Nazwa pliku .yft jest dopasowana do spawnu.');
+ }
  if(!assets.some(a=>a.name==='stream/'+c.texture+'.ytd')) warning('Brakuje '+c.texture+'.ytd. Część modeli korzysta ze wspólnych tekstur, ale sprawdź pojazd w grze.');
  if(!assets.some(a=>a.name==='stream/'+c.spawn+'_hi.yft')) warning('Brak '+c.spawn+'_hi.yft. Może działać, ale LOD-y wymagają sprawdzenia.');
  if(c.vehicleType !== 'VEHICLE_TYPE_CAR') error('Generator automatyczny obsługuje obecnie samochody. Inne klasy wymagają dedykowanych metadanych.');
