@@ -1,0 +1,9 @@
+.yft-inspector{display:flex;flex-direction:column;gap:15px;border:1px solid #2d4b5b;background:#151f29;border-radius:10px;padding:20px}
+.yft-heading{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.yft-heading h2{font-size:19px;color:#dff0f5;margin:0 0 9px}.yft-heading h2 small{font-size:9px;color:#83c7d1;letter-spacing:.5px;border:1px solid #3c7484;padding:4px 6px;border-radius:4px}
+.yft-heading p{font-size:12px;color:#93afbe;line-height:1.6;margin:0}
+.yft-toolbar{display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:#192b37;border:1px solid #344d5e;border-radius:6px;padding:10px 13px;font-size:11px;color:#9ab9c5}
+.yft-toolbar label{display:flex;align-items:center;gap:8px}.yft-toolbar select{min-width:190px;max-width:350px;padding:8px;background:#213746;border:1px solid #3f6376;color:#e0f0f3;border-radius:5px;font-size:11px}
+.yft-toolbar strong{color:#c8e6eb}.yft-preview{height:490px;min-height:320px;border-radius:7px;border:1px solid #375064;overflow:hidden;background:#141d29}
+.yft-preview .viewport{height:100%;width:100%}
+@media(max-width:1000px){.yft-heading{flex-wrap:wrap}.yft-toolbar label{width:100%}.yft-toolbar select{max-width:none;flex:1}}
