@@ -1,6 +1,6 @@
 [package]
 name = "kurogane-studio"
-version = "0.12.0"
+version = "0.13.0"
 description = "Kurogane Studio — desktopowy edytor zasobów 3D"
 authors = ["KrzysioYT"]
 license = "UNLICENSED"
