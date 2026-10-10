@@ -1,3 +1,17 @@
+# RPF → FiveM (v0.3 Alpha)
+
+Kurogane Studio ma teraz natywny importer Rockstar RPF7 dla **niezaszyfrowanych archiwów modów**. W zakładce `FiveM Add-on` użyj przycisku **Otwórz RPF7**, wybierz `.rpf`, sprawdź automatyczne dane pojazdu, uzupełnij handling i kliknij **Eksportuj addon ZIP**.
+
+Proces odbywa się lokalnie w Windows, na bibliotece Rust `rpf-archive` (Unlicense, https://github.com/VIRUXE/rpf-archive-rs); nie wymaga OpenIV ani przesyłania plików na serwer. Importer obsługuje również zagnieżdżone **otwarte** archiwa, zachowuje nagłówki modeli RSC7, kopiuje modele GTA do `stream/` i znane metadane do `data/`. Generowanie paczki FiveM działa przez istniejący walidator resource.
+
+**Ograniczenia:** archiwa zaszyfrowane AES/NG są świadomie odrzucane. Na razie jeden samochód na resource; wielopojazdowe DLC, zamiana modeli *replace* na add-on, audio DLC oraz nieznane pliki meta wymagają osobnej implementacji. `.rpf` nie oznacza podglądu geometrii `.yft` w 3D. Własne `vehicles.meta` i `handling.meta` najlepiej zachować, gdyż uniwersalne szablony nie zapewniają dopasowania do każdej modyfikacji.
+
+Limity importera: archiwum do 256 MiB, po rozpakowaniu do 160 MiB, pojedynczy plik do 100 MiB, 500 dopuszczonych plików. RPF nie jest nigdy wykonywany jako kod.
+
+**Test:** `npm test`, `npm run build`, `cargo test --manifest-path src-tauri/Cargo.toml --lib`, `npm run tauri build`. Zawsze zweryfikuj spawn w FiveM.
+
+---
+
 # Kurogane Studio
 
 **Autorski edytor 3D na Windows** — projekt prywatny właściciela `KrzysioYT`. Kurogane Studio **nie** jest powiązane z FiveForge, Rockstar Games ani Cfx.re.
