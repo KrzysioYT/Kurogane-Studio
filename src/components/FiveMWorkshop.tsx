@@ -12,14 +12,16 @@ import { readText, textEditable, updateFileText } from '../fivem/zip-project';
 import type { VehicleAsset } from '../fivem/types';
 import { pickRpfArchive } from '../fivem/rpf';
 import TextureStudio from './TextureStudio';
+import YftInspector from './YftInspector';
 
-type Page = 'identity'|'physics'|'textures'|'files'|'code';
+type Page = 'identity'|'physics'|'textures'|'model'|'files'|'code';
 const pages: {id:Page;label:string}[] = [
  {id:'identity',label:'01 · Pojazd'},
  {id:'physics',label:'02 · Handling'},
  {id:'textures',label:'03 · Retexture / Loga'},
- {id:'files',label:'04 · Zasoby'},
- {id:'code',label:'05 · Wygenerowane pliki'},
+ {id:'model',label:'04 · Podgląd YFT 3D'},
+ {id:'files',label:'05 · Zasoby'},
+ {id:'code',label:'06 · Wygenerowane pliki'},
 ];
 const empty:ImportedAssets={assets:[],warnings:[],ignored:0};
 const toNumber = (value:string)=>Number(value);
@@ -214,7 +216,7 @@ export default function FiveMWorkshop(){
  return <section className="addon-studio" onDrop={onDrop} onDragOver={onDrag} onDragLeave={(event)=>{event.preventDefault();event.stopPropagation();setDrop(false);}}>
   <div className="addon-head">
     <div><span className="eyebrow">KUROGANE STUDIO / FIVE M TOOLCHAIN</span>
-      <h1>FiveM Vehicle Workshop <span>0.5 ALPHA</span></h1>
+      <h1>FiveM Vehicle Workshop <span>0.6 ALPHA</span></h1>
       <p>Import auta z ZIP lub RPF7, edycja handlingu i tekstur YTD, logotypy oraz eksport addonu.</p></div>
     <button className="button primary" disabled={working||blockers>0||editorText!==savedText||textureDirty} onClick={()=>void exportZip()}>
       {working?'Przetwarzanie…':'⇩ Eksportuj addon ZIP'}
@@ -284,6 +286,7 @@ export default function FiveMWorkshop(){
       <div style={{display:page==='textures'?'block':'none'}}>
         <TextureStudio files={data.assets} onUpdate={updateYtd} onDirtyChange={setTextureDirty}/>
       </div>
+      <div style={{display:page==='model'?'block':'none'}}><YftInspector files={data.assets}/></div>
       {page==='files'&&<div className="addon-panel">
         <h2>Pliki projektu addonu</h2><p className="addon-help">Otwarty ZIP nie jest nadpisywany. Możesz zmieniać pliki tekstowe, podmieniać binaria i eksportować nowy ZIP. Oryginalnych plików modelu YFT nie modyfikujemy geometrycznie.</p>
         <div className="addon-message">Załadowano {allProjectFiles.length} plików, w tym {extraFiles.length} plików dodatkowych. {extraFiles.some(f=>/\\.(lua|js)$/i.test(f.name))?'Uwaga: paczka zawiera skrypty — sprawdź ich bezpieczeństwo przed instalacją na serwerze.':''}</div>
