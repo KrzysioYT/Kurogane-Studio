@@ -109,6 +109,9 @@ export default function FiveMWorkshop(){
    }finally{setWorking(false);}
  };
  const selectProjectFile=(file:VehicleAsset)=>{
+   if(activeFile!==file.name && editorText!==savedText){
+     setEditingError('Najpierw zapisz zmiany aktualnego pliku, aby ich nie utracić.');return;
+   }
    setActiveFile(file.name);setEditingError('');
    if(!textEditable(file.name)){setEditorText('');setSavedText('');return;}
    try { const text=readText(file);setEditorText(text);setSavedText(text); }
@@ -120,6 +123,8 @@ export default function FiveMWorkshop(){
      if(data.assets.some(file=>file.name===activeFile)){
        const updated=updateFileText(data.assets,activeFile,editorText);
        setData(prev=>({...prev,assets:updated}));
+       if(activeFile.endsWith('.meta'))
+         setConfig(previous=>inferConfig(updated,previous));
      } else {
        const updated=updateFileText(data.extraFiles??[],activeFile,editorText);
        setData(prev=>({...prev,extraFiles:updated}));
@@ -158,7 +163,10 @@ export default function FiveMWorkshop(){
  };
  const onDrag=(event:DragEvent<HTMLElement>)=>{event.preventDefault();event.stopPropagation();setDrop(true);};
  const exportZip=async()=>{
-   if(working||blockers) return;
+   if(working||blockers)return;
+   if(editorText!==savedText){
+     setMessage('Najpierw kliknij Zapisz w projekcie przy edytowanym pliku, potem eksportuj ZIP.');return;
+   }
    setWorking(true);setMessage('Generuję addon FiveM...');
    try{
      const bytes=await createAddonZip(data.assets,config,data.extraFiles??[]);
@@ -200,7 +208,7 @@ export default function FiveMWorkshop(){
     <div><span className="eyebrow">KUROGANE STUDIO / FIVE M TOOLCHAIN</span>
       <h1>FiveM Vehicle Workshop <span>0.4 ALPHA</span></h1>
       <p>ZIP gotowego addonu lub RPF7 → edycja plików, handlingu i ustawień → nowy ZIP FiveM.</p></div>
-    <button className="button primary" disabled={working||blockers>0} onClick={()=>void exportZip()}>
+    <button className="button primary" disabled={working||blockers>0||editorText!==savedText} onClick={()=>void exportZip()}>
       {working?'Przetwarzanie…':'⇩ Eksportuj addon ZIP'}
     </button>
   </div>
