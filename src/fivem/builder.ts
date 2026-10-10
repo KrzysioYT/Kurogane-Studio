@@ -21,7 +21,6 @@ function normalizeName(name:string):string | null {
   return null;
 }
 function decode(bytes:Uint8Array) { return new TextDecoder('utf-8',{fatal:false}).decode(bytes); }
-function encode(value:string) { return new TextEncoder().encode(value); }
 const originalMeta=(assets:VehicleAsset[],name:string)=>
   assets.find(asset=>asset.name === 'data/'+name);
 
