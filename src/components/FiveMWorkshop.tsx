@@ -64,6 +64,8 @@ export default function FiveMWorkshop(){
  const [textureDirty,setTextureDirty]=useState(false);
  const [yftDirty,setYftDirty]=useState(false);
  const yftBackups=useRef(new Map<string,Uint8Array>());
+ const ytdBackups=useRef(new Map<string,Uint8Array>());
+ const [ytdRevision,setYtdRevision]=useState(0);
  const [yftRevision,setYftRevision]=useState(0);
  const [projectRevision,setProjectRevision]=useState(0);
  const replaceRef=useRef<HTMLInputElement>(null);
@@ -80,7 +82,7 @@ export default function FiveMWorkshop(){
    setConfig(previous=>({...previous,[key]:value}));
  };
  const loadImported=(imported:ImportedAssets)=>{
-   yftBackups.current.clear();setYftRevision(v=>v+1);
+   yftBackups.current.clear();ytdBackups.current.clear();setYftRevision(v=>v+1);setYtdRevision(v=>v+1);
    setData(imported);setTextureDirty(false);setYftDirty(false);setProjectRevision(n=>n+1);
    setActiveFile(null);setEditorText('');setSavedText('');setEditingError('');
    setConfig(previous=>inferConfig(imported.assets,{
@@ -202,8 +204,19 @@ export default function FiveMWorkshop(){
    finally{setWorking(false);}
  };
  const updateYtd=(name:string,bytes:Uint8Array)=>{
+   const original=data.assets.find(file=>file.name===name);
+   if(!original)return;
+   if(!ytdBackups.current.has(name))ytdBackups.current.set(name,Uint8Array.from(original.bytes));
    setData(previous=>({...previous,assets:previous.assets.map(file=>file.name===name?{...file,bytes,source:'YTD edytowany w Kurogane Studio'}:file)}));
-   setMessage('Tekstura YTD zaktualizowana w pamięci projektu. Eksportuj ZIP, aby zapisać całe auto.');
+   setMessage('Zmieniono oryginalny YTD w pamięci projektu. Eksportuj ZIP, aby zapisać cały addon.');
+ };
+ const restoreYtd=(name:string)=>{
+   const original=ytdBackups.current.get(name);if(!original)return;
+   if((textureDirty||yftDirty)&&!window.confirm('Masz niezapisane zmiany. Przywrócenie tekstur je odrzuci. Kontynuować?'))return;
+   if(!window.confirm('Przywrócić oryginalny słownik YTD sprzed pierwszej edycji?'))return;
+   setData(previous=>({...previous,assets:previous.assets.map(file=>file.name===name?{...file,bytes:Uint8Array.from(original),source:'Oryginalny plik YTD'}:file)}));
+   ytdBackups.current.delete(name);setTextureDirty(false);setYtdRevision(n=>n+1);
+   setMessage('Przywrócono oryginalne '+name+'.');
  };
  const updateYft=(name:string,bytes:Uint8Array)=>{
    const original=data.assets.find(file=>file.name===name);
@@ -310,14 +323,18 @@ export default function FiveMWorkshop(){
         <button className="button secondary" onClick={()=>setConfig(p=>({...p,handlingValues:{...DEFAULTS.handlingValues}}))}>Przywróć bazowy handling</button>
       </div>}
       <div style={{display:page==='textures'?'block':'none'}}>
-        <TextureStudio key={projectRevision} files={data.assets} onUpdate={updateYtd} onDirtyChange={setTextureDirty}/>
+        {ytdBackups.current.size>0&&<div className="addon-message">
+          Zmienione słowniki YTD · możesz przywrócić oryginalne tekstury:
+          {[...ytdBackups.current.keys()].map(name=><button key={name} className="button secondary" style={{marginLeft:10}} onClick={()=>restoreYtd(name)}>↶ Przywróć {name}</button>)}
+        </div>}
+        <TextureStudio key={projectRevision+'-'+ytdRevision} files={data.assets} onUpdate={updateYtd} onDirtyChange={setTextureDirty}/>
       </div>
       <div style={{display:page==='model'?'block':'none'}}>
         {yftBackups.current.size>0&&<div className="addon-message" role="status">
           Eksperymentalne zmiany geometrii YFT w projekcie. Przed użyciem sprawdź samochód na testowym serwerze.
           {[...yftBackups.current.keys()].map(name=><button className="button secondary" key={name} style={{marginLeft:10}} onClick={()=>restoreYft(name)}>↶ Przywróć oryginał {name}</button>)}
         </div>}
-        <YftInspector key={projectRevision+'-'+yftRevision} files={data.assets} onUpdateYft={updateYft} onDirtyChange={setYftDirty}/>
+        <YftInspector key={projectRevision+'-'+yftRevision+'-'+ytdRevision} files={data.assets} onUpdateYft={updateYft} onUpdateYtd={updateYtd} onDirtyChange={setYftDirty}/>
       </div>
       {page==='files'&&<div className="addon-panel">
         <h2>Pliki projektu addonu</h2><p className="addon-help">Otwarty ZIP nie jest nadpisywany. Możesz zmieniać pliki tekstowe, podmieniać binaria i eksportować nowy ZIP. Oryginalnych plików modelu YFT nie modyfikujemy geometrycznie.</p>
