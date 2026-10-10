@@ -238,7 +238,7 @@ export default function App() {
   return <div className="shell" onDragOver={event => { event.preventDefault(); setDragActive(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragActive(false); }} onDrop={onDrop}>
     <header className={fiveMMode ? "topbar fivem-topbar" : "topbar"}>
       <Brand />
-      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.8.0</span></div>
+      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.9.0</span></div>
       <div className="header-actions">
         <button className={"button workspace-toggle " + (fiveMMode ? "current" : "")} onClick={() => setFiveMMode(current => !current)}>{fiveMMode ? "← Edytor 3D" : "🚘 FiveM Add-on"}</button>
         <span className="local-pill"><span className="online-dot" /> LOCAL / WINDOWS</span>
@@ -369,6 +369,6 @@ export default function App() {
         <div className="inspector-note"><div className="section-title">INFORMACJE</div><div className="stat-row"><span>Elementy 3D</span><strong>{meshes}</strong></div><div className="stat-row"><span>Format wyjścia</span><strong>GLB</strong></div><div className="stat-row"><span>Format GTA V</span><strong className="warning">W planie</strong></div></div>
       </aside>
     </div>
-    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.8.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
+    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.9.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
   </div>;
 }
