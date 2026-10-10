@@ -10,6 +10,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 const MAX_PATCHES:usize=20_000;
+const MAX_EXPANDED:usize=512*1024*1024;
 const MAX_INPUT:usize=160*1024*1024;
 const MAX_VERTICES:usize=450_000;
 const MAX_INDICES:usize=900_000;
@@ -92,6 +93,12 @@ pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
  if !bytes.starts_with(b"RSC7")||bytes.len()<16||bytes.len()>MAX_INPUT{
    return Err("Nieobsługiwany lub zbyt duży YFT (tylko RSC7 do 160 MiB).".into());
  }
+ let sys_flags=u32::from_le_bytes(bytes[8..12].try_into().unwrap());
+ let gfx_flags=u32::from_le_bytes(bytes[12..16].try_into().unwrap());
+ let max_decompressed=rage_formats::resource::resource_size_from_flags(sys_flags)
+     .checked_add(rage_formats::resource::resource_size_from_flags(gfx_flags))
+     .ok_or("Przepełnienie rozmiaru sekcji RSC7.")?;
+ if max_decompressed>MAX_EXPANDED {return Err("Rozpakowany YFT przekroczyłby bezpieczny limit 512 MiB.".into());}
  if patches.is_empty()||patches.len()>MAX_PATCHES{
    return Err("Liczba zmian wierzchołków musi wynosić 1–20000.".into());
  }
@@ -99,8 +106,8 @@ pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
  let (mut system,mut graphics)=prepare_rsc7(bytes)
    .map_err(|e|format!("Nie można rozpakować YFT: {e}"))?;
  let version=u32::from_le_bytes(bytes[4..8].try_into().unwrap());
- let sys_flags=u32::from_le_bytes(bytes[8..12].try_into().unwrap());
- let gfx_flags=u32::from_le_bytes(bytes[12..16].try_into().unwrap());
+ let original_system=system.clone();
+ let original_graphics=graphics.clone();
  let mut seen=HashMap::<(u8,usize),[f32;3]>::new();
  for patch in patches{
    let bind=bindings.get(patch.mesh_index)
@@ -136,10 +143,31 @@ pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
    if section_id==1{patch_section(&mut graphics,offset,coords)?;}
    else {patch_section(&mut system,offset,coords)?;}
  }
+ // Refuse overlapping vertex ranges: they might address shared or malformed buffers.
+ let mut intervals:Vec<(u8,usize)>=seen.keys().copied().collect();
+ intervals.sort_unstable();
+ for pair in intervals.windows(2){
+   if pair[0].0==pair[1].0 && pair[0].1.checked_add(12)
+      .is_some_and(|end|end>pair[1].1){
+     return Err("Nakładające się bufory wierzchołków YFT. Nie można bezpiecznie zapisać.".into());
+   }
+ }
+ let intended=|section_id:u8,position:usize| -> bool {
+   intervals.iter().any(|&(id,start)|id==section_id && position>=start && position-start<12)
+ };
+ if system.iter().zip(original_system.iter()).enumerate().any(|(i,(a,b))|a!=b&&!intended(0,i)) ||
+    graphics.iter().zip(original_graphics.iter()).enumerate().any(|(i,(a,b))|a!=b&&!intended(1,i)){
+   return Err("Weryfikacja bezpieczeństwa wykryła modyfikację poza buforami wierzchołków.".into());
+ }
  // Rebuild using the SAME RSC7 flags, exact pages, offsets, section sizes and version.
  // We have not changed a pointer, triangle count, bone or collision struct.
  let result=build_rsc7_with_flags(version,sys_flags,&system,gfx_flags,&graphics);
  // Required post-serialization check: reparse the complete fragment and compare edited points.
+ let (sys_check,gfx_check)=prepare_rsc7(&result)
+   .map_err(|e|format!("Nie można odczytać zapisanego YFT: {e}"))?;
+ if sys_check!=system || gfx_check!=graphics {
+   return Err("Ponowne pakowanie RSC7 zmieniło dane inne niż bufory pozycji.".into());
+ }
  let check=mesh_bindings(&result)?;
  if check.len()!=bindings.len(){
    return Err("Po ponownym zapisie zmieniła się liczba meshów YFT. Zapis zablokowany.".into());
@@ -151,6 +179,18 @@ pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
    for(i,target) in [patch.x,patch.y,patch.z].into_iter().enumerate(){
      if (actual[i]-target).abs()>1e-4{
        return Err("Zmiana współrzędnych nie przeszła walidacji YFT po zapisie.".into());
+     }
+   }
+ }
+ for (mesh_index,(before,after)) in bindings.iter().zip(check.iter()).enumerate(){
+   if before.positions.len()!=after.positions.len(){
+     return Err(format!("Po zapisie mesh {mesh_index} zmienił liczbę wierzchołków."));
+   }
+   for (i,(old,new)) in before.positions.iter().zip(after.positions.iter()).enumerate(){
+     let changed=patches.iter().find(|p|p.mesh_index==mesh_index&&p.vertex_index==i);
+     let expected=changed.map(|p|[p.x,p.y,p.z]).unwrap_or(*old);
+     if !new.iter().zip(expected.iter()).all(|(a,b)|a.to_bits()==b.to_bits()){
+       return Err(format!("Niezgodny wierzchołek: mesh {mesh_index}, punkt {i}."));
      }
    }
  }
