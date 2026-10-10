@@ -1,3 +1,7 @@
+## Existing ZIP add-on project editor (v0.4 alpha)
+
+Wybierz **FiveM Add-on → Otwórz ZIP / pliki** lub przeciągnij paczkę resource. Kurogane zachowuje dodatki, skrypty i manifest, pozwala edytować pliki tekstowe, zmieniać handling i podmieniać zasoby, a następnie generuje nowy ZIP bez modyfikowania oryginału. Zobacz [instrukcję](docs/ZIP_ADDON_EDITOR.md).
+
 # RPF → FiveM (v0.3 Alpha)
 
 Kurogane Studio ma teraz natywny importer Rockstar RPF7 dla **niezaszyfrowanych archiwów modów**. W zakładce `FiveM Add-on` użyj przycisku **Otwórz RPF7**, wybierz `.rpf`, sprawdź automatyczne dane pojazdu, uzupełnij handling i kliknij **Eksportuj addon ZIP**.
