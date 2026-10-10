@@ -14,6 +14,8 @@ import {SceneHistory} from './lib/history';
 import {decodeProject,saveProject} from './lib/project';
 import {moveVertex} from './lib/modeling';
 import {createLogoDecal,loadLogoImage} from './lib/decal';
+import {auditScene} from './lib/model-audit';
+import type {AuditReport} from './lib/model-audit';
 import type { PrimitiveKind } from './lib/geometry';
 
 type Axis = 'x' | 'y' | 'z';
@@ -62,6 +64,7 @@ export default function App() {
   const [logoSize,setLogoSize]=useState(.65);
   const [logoRotation,setLogoRotation]=useState(0);
   const [logoOpacity,setLogoOpacity]=useState(1);
+  const [auditResult,setAuditResult]=useState<{report:AuditReport;revision:number}|null>(null);
   const [revision, setRevision] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [faceMode,setFaceMode]=useState(false);
@@ -254,6 +257,13 @@ export default function App() {
       setStatus('Logo 3D dodane jako edytowalna część. Projekt/GLB zachowuje grafikę; to nie jest zapis YTD.');
     }catch(error){setStatus('Nie udało się umieścić logo: '+String(error));}
   };
+  const checkGeometry=()=>{
+    try{
+      const report=auditScene(root);
+      setAuditResult({report,revision});
+      setStatus('Model Doctor: '+report.errors+' błędów krytycznych, '+report.warnings+' ostrzeżeń i '+report.triangles.toLocaleString('pl-PL')+' trójkątów.');
+    }catch(error){setStatus('Nie udało się sprawdzić modelu: '+String(error));}
+  };
   const addPrimitive = () => {
     if(!checkpoint('Dodaj bryłę'))return;
     const mesh=createPrimitive(primitiveKind);
@@ -331,7 +341,7 @@ export default function App() {
   return <div className="shell" onDragOver={event => { event.preventDefault(); setDragActive(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragActive(false); }} onDrop={onDrop}>
     <header className={fiveMMode ? "topbar fivem-topbar" : "topbar"}>
       <Brand />
-      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.12.0</span></div>
+      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.13.0</span></div>
       <div className="header-actions">
         <button className={"button workspace-toggle " + (fiveMMode ? "current" : "")} onClick={() => {setWorkshopOpened(true);setFiveMMode(current => !current);}}>{fiveMMode ? "← Edytor 3D" : "🚘 FiveM Add-on"}</button>
         <button className="button ghost" onClick={newWorkspace} disabled={busy}>Nowa scena</button>
@@ -398,10 +408,30 @@ export default function App() {
               {vertexMode?'● Wierzchołki ON':'○ Edycja wierzchołków'}
             </button>
             <button className={faceMode?'is-active':''} onClick={()=>{setFaceMode(v=>!v);setVertexMode(false);setFaces([]);setVertexIndex(null)}}>Ściany</button>
+            <button onClick={checkGeometry}>⚕ Model Doctor</button>
             <button disabled={!history.current.canUndo} onClick={()=>restore()}>Cofnij</button>
             <button disabled={!history.current.canRedo} onClick={()=>restore(true)}>Ponów</button>
             <span>Projekt .kurogane / eksport GLB</span>
           </div>
+          {auditResult&&<section className="model-doctor" aria-label="Wynik audytu geometrii">
+            <div className="model-doctor-head">
+              <strong>Model Doctor · kontrola siatki</strong>
+              <span>{auditResult.report.parts} części · {auditResult.report.vertices.toLocaleString('pl-PL')} punktów · {auditResult.report.triangles.toLocaleString('pl-PL')} trójkątów</span>
+              <span className={auditResult.report.errors?'model-doctor-danger':'model-doctor-ok'}>{auditResult.report.errors} błędów</span>
+              <span>{auditResult.report.warnings} ostrzeżeń</span>
+              <button onClick={()=>setAuditResult(null)}>Zamknij</button>
+            </div>
+            {auditResult.revision!==revision&&<p className="model-doctor-stale">Model zmienił się od ostatniego audytu. Kliknij Model Doctor ponownie, aby odświeżyć wyniki.</p>}
+            <div className="model-doctor-list">
+              {auditResult.report.issues.length===0&&<p>Nie wykryto problemów w zakresie kontrolowanych danych siatki.</p>}
+              {auditResult.report.issues.map((diagnostic,i)=><button className={'model-doctor-issue '+diagnostic.severity} key={diagnostic.code+'-'+i}
+                disabled={!diagnostic.meshId} onClick={()=>select(diagnostic.meshId)}>
+                <strong>{diagnostic.severity==='error'?'BŁĄD':diagnostic.severity==='warning'?'UWAGA':'INFO'}</strong>
+                <span>{diagnostic.meshName}: {diagnostic.message}</span>
+              </button>)}
+            </div>
+            <small>To audyt geometrii GLB. Nie sprawdza działania w FiveM, riggingu, kolizji i poprawności natywnego YFT.</small>
+          </section>}
           <div className="decal-toolbar">
             <button onClick={()=>logoRef.current?.click()}>↥ Wczytaj logo PNG / JPG</button>
             <input hidden type="file" ref={logoRef} accept="image/png,image/jpeg,image/webp" onChange={e=>{
@@ -494,7 +524,7 @@ export default function App() {
         <div className="inspector-note"><div className="section-title">INFORMACJE</div><div className="stat-row"><span>Elementy 3D</span><strong>{meshes}</strong></div><div className="stat-row"><span>Format wyjścia</span><strong>GLB</strong></div><div className="stat-row"><span>Format GTA V</span><strong className="warning">W planie</strong></div></div>
       </aside>
     </div>
-    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.12.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
+    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.13.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
   </div>;
 }
 
