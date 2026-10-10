@@ -73,10 +73,28 @@ fn save_vehicle_zip(file_name: String, bytes: Vec<u8>) -> Result<bool, String> {
     }
 }
 
+/// Native save dialog for the self-contained Kurogane ZIP project.
+#[tauri::command]
+fn save_studio_project(file_name: String, bytes: Vec<u8>) -> Result<bool, String> {
+    if bytes.len() > 128 * 1024 * 1024 || !bytes.starts_with(b"PK\x03\x04") {
+        return Err("Niepoprawny projekt lub rozmiar powyżej 128 MiB.".into());
+    }
+    let stem: String = file_name.trim_end_matches(".kurogane").chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, '-' | '_')).take(100).collect();
+    let name = if stem.is_empty() { "projekt" } else { &stem };
+    let path = rfd::FileDialog::new().set_title("Zapis projektu Kurogane Studio")
+        .set_file_name(format!("{name}.kurogane")).add_filter("Projekt Kurogane", &["kurogane"]).save_file();
+    if let Some(path) = path {
+        std::fs::write(path, bytes).map_err(|e| format!("Błąd zapisu projektu: {e}"))?;
+        Ok(true)
+    } else { Ok(false) }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_glb, save_vehicle_zip, rpf::import_rpf, ytd::ytd_list, ytd::ytd_png, ytd::ytd_replace_png, yft::yft_preview, yft_patch::yft_patch_vertices])
+        .invoke_handler(tauri::generate_handler![save_studio_project, save_glb, save_vehicle_zip, rpf::import_rpf, ytd::ytd_list, ytd::ytd_png, ytd::ytd_replace_png, yft::yft_preview, yft_patch::yft_patch_vertices])
         .run(tauri::generate_context!())
         .expect("Nie można uruchomić Kurogane Studio");
 }
+

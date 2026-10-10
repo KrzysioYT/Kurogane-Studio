@@ -17,3 +17,17 @@
 .vertex-editor .axis-row{margin:11px 0}.vertex-editor small{font-size:10px;color:#83a8b8}
 .geometry-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
 .geometry-actions button{white-space:normal;padding:8px 5px}
+
+/* Modeling workspace */
+.model-field{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0;font-size:12px}
+.model-field input,.model-field select{min-width:0;width:110px;background:#172534;color:#d8e6ed;border:1px solid #35495a;border-radius:4px;padding:5px}
+.property-block summary{cursor:pointer;font-weight:600;margin-bottom:10px;color:#b8d7e4}
+.property-block small{display:block;color:#8cabbc;font-size:11px;line-height:1.5;margin:6px 0}
+.uv-preview{width:100%;max-height:210px;border:1px solid #35495a;margin-top:8px}
+.viewport-options select{background:#172534;color:#c9dde8;border:1px solid #35495a;border-radius:5px;padding:5px;max-width:115px}
+.modeler-toolbar{flex-wrap:wrap}
+.header-actions{flex-wrap:wrap}
+.topbar{height:auto;min-height:78px;padding-top:10px;padding-bottom:10px}
+.header-actions{justify-content:flex-end;white-space:normal}
+.viewport-options{flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:1700px){.top-crumbs{display:none}.topbar{gap:14px}.brand{min-width:190px}}

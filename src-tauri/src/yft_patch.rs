@@ -196,13 +196,15 @@ pub fn patch_yft(bytes:&[u8],patches:&[VertexPatch])->Result<Vec<u8>,String>{
      }
    }
  }
+ // O(vertices + patches), not O(vertices * patches) for soft-selection edits.
+ let expected_patches:HashMap<(usize,usize),[f32;3]>=patches.iter()
+   .map(|p|((p.mesh_index,p.vertex_index),[p.x,p.y,p.z])).collect();
  for (mesh_index,(before,after)) in bindings.iter().zip(check.iter()).enumerate(){
    if before.positions.len()!=after.positions.len(){
      return Err(format!("Po zapisie mesh {mesh_index} zmienił liczbę wierzchołków."));
    }
    for (i,(old,new)) in before.positions.iter().zip(after.positions.iter()).enumerate(){
-     let changed=patches.iter().find(|p|p.mesh_index==mesh_index&&p.vertex_index==i);
-     let expected=changed.map(|p|[p.x,p.y,p.z]).unwrap_or(*old);
+     let expected=expected_patches.get(&(mesh_index,i)).copied().unwrap_or(*old);
      if !new.iter().zip(expected.iter()).all(|(a,b)|a.to_bits()==b.to_bits()){
        return Err(format!("Niezgodny wierzchołek: mesh {mesh_index}, punkt {i}."));
      }
@@ -257,3 +259,4 @@ mod tests{
    assert_ne!(sys,sys2);
  }
 }
+

@@ -1,7 +1,7 @@
 name: Windows build
 on:
   push:
-    branches: [main, feat/windows-3d-editor-mvp, feat/fivem-vehicle-addon-builder, feat/rpf-to-fivem, feat/zip-addon-project-editor, feat/native-ytd-livery-workbench, feat/yft-3d-inspector, feat/uv-livery-preview, feat/vertex-modeler, feat/yft-shader-material-mapping, feat/experimental-yft-vertex-roundtrip]
+    branches: [main, feat/windows-3d-editor-mvp, feat/fivem-vehicle-addon-builder, feat/rpf-to-fivem, feat/zip-addon-project-editor, feat/native-ytd-livery-workbench, feat/yft-3d-inspector, feat/uv-livery-preview, feat/vertex-modeler, feat/yft-shader-material-mapping, feat/experimental-yft-vertex-roundtrip, feat/face-topology-modeler]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Node dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Test resource generator
         run: npm test
       - name: Typecheck and build UI
@@ -36,3 +36,4 @@ jobs:
           name: kurogane-studio-windows-nsis
           path: src-tauri/target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
+

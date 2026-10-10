@@ -55,19 +55,16 @@ export function mirrorGeometry(mesh:THREE.Mesh,axis:'x'|'y'|'z'):void {
    }
    index.needsUpdate=true;
  }else {
-   const pos=clone.getAttribute('position') as THREE.BufferAttribute;
-   const uv=clone.getAttribute('uv') as THREE.BufferAttribute|undefined;
-   const temp=new THREE.Vector3();
-   for(let i=0;i+2<pos.count;i+=3){
-     temp.fromBufferAttribute(pos,i);
-     const b=new THREE.Vector3().fromBufferAttribute(pos,i+1);
-     pos.setXYZ(i,b.x,b.y,b.z);pos.setXYZ(i+1,temp.x,temp.y,temp.z);
-     if(uv){
-       const au=uv.getX(i),av=uv.getY(i);
-       uv.setXY(i,uv.getX(i+1),uv.getY(i+1));uv.setXY(i+1,au,av);
+   // Winding changes must permute every attribute, not just positions/UV.
+   const count=clone.getAttribute('position').count;
+   for(const attr of Object.values(clone.attributes)){
+     for(let i=0;i+2<count;i+=3)for(let component=0;component<attr.itemSize;component++){
+       const a=attr.getComponent(i,component),b=attr.getComponent(i+1,component);
+       attr.setComponent(i,component,b);attr.setComponent(i+1,component,a);
      }
+     attr.needsUpdate=true;
    }
-   pos.needsUpdate=true;if(uv)uv.needsUpdate=true;
+
  }
  clone.computeVertexNormals();clone.computeBoundingBox();clone.computeBoundingSphere();
 }
@@ -75,3 +72,4 @@ export function recalcNormals(mesh:THREE.Mesh){
  const clone=mesh.geometry.clone();
  mesh.geometry=clone;clone.computeVertexNormals();clone.computeBoundingSphere();
 }
+
