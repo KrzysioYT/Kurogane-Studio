@@ -1,6 +1,6 @@
 {
   "productName": "Kurogane Studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "dev.krzysioyt.kuroganestudio",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Kurogane Studio — 3D Workspace",
+        "title": "Kurogane Studio — FiveM Vehicle Workshop",
         "width": 1480,
         "height": 900,
         "minWidth": 1060,
