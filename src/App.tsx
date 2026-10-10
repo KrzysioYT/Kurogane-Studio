@@ -449,7 +449,7 @@ export default function App() {
             }}/>
             <label>Oznaczenie <input type="text" aria-label="Tekst oznaczenia" maxLength={100} value={logoText} onChange={e=>setLogoText(e.target.value)} placeholder="LSPD / 108"/></label>
             <label>Kolor <input type="color" aria-label="Kolor napisu" value={textColor} onChange={e=>setTextColor(e.target.value)}/></label>
-            <button onClick={makeTextMarking}>Tłoczony napis 3D</button>
+            <button onClick={makeTextMarking}>Przygotuj napis 3D</button>
             <label>Szerokość (m) <input type="number" min=".025" max="10" step=".05" value={logoSize} onChange={e=>setLogoSize(Number(e.target.value))}/></label>
             <label>Obrót (°) <input type="number" min="-3600" max="3600" step="15" value={logoRotation} onChange={e=>setLogoRotation(Number(e.target.value))}/></label>
             <label>Krycie (%) <input type="range" min="5" max="100" step="5" value={logoOpacity*100} onChange={e=>setLogoOpacity(Number(e.target.value)/100)}/></label>
