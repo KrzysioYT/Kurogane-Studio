@@ -9,6 +9,7 @@ import './YftInspector.css';
 
 type MeshData={name:string;vertices:number[];normals:number[];uv:number[];indices:number[];shaderId:number};
 type Props={files:VehicleAsset[]};
+type TextureEntry={name:string;width:number;height:number;format:string;levels:number};
 function fromMeshes(data:MeshData[],root:THREE.Group){
  clearModel(root);
  for(const part of data){
@@ -24,6 +25,7 @@ function fromMeshes(data:MeshData[],root:THREE.Group){
    const material=new THREE.MeshStandardMaterial({color,roughness:.52,metalness:.18,side:THREE.DoubleSide});
    const mesh=new THREE.Mesh(geometry,material);
    mesh.name=part.name;
+   mesh.userData.shaderId=part.shaderId;
    mesh.castShadow=true;mesh.receiveShadow=true;
    root.add(mesh);
  }
@@ -34,10 +36,16 @@ export default function YftInspector({files}:Props){
  const [message,setMessage]=useState('Wybierz plik YFT z importowanego addonu.');
  const [stats,setStats]=useState({meshCount:0,triangles:0});
  const [focus,setFocus]=useState(0);
+ const [shaderIds,setShaderIds]=useState<number[]>([]);
+ const [shader,setShader]=useState<number|null>(null);
+ const [textureFile,setTextureFile]=useState('');
+ const [textureName,setTextureName]=useState('');
+ const [textureEntries,setTextureEntries]=useState<TextureEntry[]>([]);
  const root=useMemo(()=>new THREE.Group(),[]);
  const choices=files.filter(f=>f.name.toLowerCase().endsWith('.yft')&&!f.name.toLowerCase().endsWith('_hi.yft'));
+ const ytdFiles=files.filter(f=>f.name.toLowerCase().endsWith('.ytd'));
  const load=async(name:string)=>{
-   setFilename(name);clearModel(root);setStats({meshCount:0,triangles:0});
+   setFilename(name);clearModel(root);setStats({meshCount:0,triangles:0});setShaderIds([]);setShader(null);
    if(!name)return;
    if(!isTauri()){setMessage('Podgląd YFT wymaga aplikacji Windows Tauri.');return;}
    const file=files.find(f=>f.name===name);
@@ -46,11 +54,67 @@ export default function YftInspector({files}:Props){
    try{
      const parts=await invoke<MeshData[]>('yft_preview',{bytes:Array.from(file.bytes)});
      fromMeshes(parts,root);
+     const shaders=[...new Set(parts.map(part=>part.shaderId))].sort((a,b)=>a-b);
+     setShaderIds(shaders);setShader(shaders[0]??null);
      const triangles=parts.reduce((s,x)=>s+Math.floor(x.indices.length/3),0);
      setStats({meshCount:parts.length,triangles});
      setFocus(n=>n+1);
      setMessage('Wczytano '+parts.length+' meshów i '+triangles.toLocaleString('pl-PL')+' trójkątów. Podgląd jest tylko do odczytu.');
    }catch(error){setMessage('Błąd parsowania YFT: '+String(error));}
+   finally{setBusy(false);}
+ };
+ const pickTextureFile=async(name:string)=>{
+   setTextureFile(name);setTextureEntries([]);setTextureName('');
+   const item=files.find(f=>f.name===name);
+   if(!item || !isTauri())return;
+   setBusy(true);
+   try{
+     const textures=await invoke<TextureEntry[]>('ytd_list',{bytes:Array.from(item.bytes)});
+     setTextureEntries(textures);
+     setTextureName(textures[0]?.name??'');
+     setMessage('Wybierz teksturę oraz shader z modelu, by zobaczyć mapowanie UV.');
+   }catch(error){setMessage('Nie można załadować tekstur YTD: '+String(error));}
+   finally{setBusy(false);}
+ };
+ const resetTexturePreview=()=>{
+   const handled=new Set<THREE.Texture>();
+   for(const object of root.children){
+     if(!(object instanceof THREE.Mesh))continue;
+     const mat=object.material;
+     if(!(mat instanceof THREE.MeshStandardMaterial))continue;
+     if(mat.map && !handled.has(mat.map)){mat.map.dispose();handled.add(mat.map);}
+     mat.map=null;
+     mat.color.setHSL((((object.userData.shaderId as number)*53)%360)/360,.25,.55);
+     mat.needsUpdate=true;
+   }
+   setMessage('Przywrócono diagnostyczne materiały YFT.');
+ };
+ const applyTexture=async()=>{
+   if(shader===null||!textureFile||!textureName||busy)return;
+   const file=files.find(f=>f.name===textureFile);if(!file)return;
+   setBusy(true);setMessage('Dekoduję YTD i nakładam teksturę na shader '+shader+'...');
+   try{
+     const base64=await invoke<string>('ytd_png',{bytes:Array.from(file.bytes),textureName});
+     const img=new Image();
+     const loaded=new Promise<void>((resolve,reject)=>{
+       img.onload=()=>resolve();img.onerror=()=>reject(new Error('PNG podglądu jest uszkodzony'));
+     });
+     img.src='data:image/png;base64,'+base64;
+     await loaded;
+     const texture=new THREE.Texture(img);
+     texture.colorSpace=THREE.SRGBColorSpace;
+     texture.flipY=true;
+     texture.needsUpdate=true;
+     let count=0;
+     for(const object of root.children){
+       if(!(object instanceof THREE.Mesh) || object.userData.shaderId!==shader)continue;
+       const mat=object.material;
+       if(!(mat instanceof THREE.MeshStandardMaterial))continue;
+       mat.map=texture;mat.color.set('#ffffff');mat.needsUpdate=true;count++;
+     }
+     if(!count){texture.dispose();throw new Error('Wybrany shader nie ma meshów do podglądu.');}
+     setMessage('Nałożono '+textureName+' na '+count+' meshów shadera '+shader+'. To ręczny podgląd UV, nie zapis zmian w YFT.');
+   }catch(error){setMessage('Błąd podglądu UV: '+String(error));}
    finally{setBusy(false);}
  };
  const exportModel=async()=>{
@@ -79,8 +143,31 @@ export default function YftInspector({files}:Props){
      <span>Trójkąty: <strong>{stats.triangles.toLocaleString('pl-PL')}</strong></span>
      <button onClick={()=>setFocus(n=>n+1)} className="button secondary">Dopasuj widok</button>
    </div>
-   <div className="yft-preview"><Viewport root={root} selectedId={null} mode="translate" focusToken={focus} onSelect={()=>{}} onChange={()=>{}}/></div>
+   <div className="yft-uv-controls">
+     <label>Grupa materiału (shader ID)
+       <select value={shader??''} onChange={event=>setShader(Number(event.target.value))} disabled={!shaderIds.length||busy}>
+         {shaderIds.map(id=><option key={id} value={id}>Shader {id} ({root.children.filter(o=>o.userData.shaderId===id).length} meshów)</option>)}
+       </select>
+     </label>
+     <label>YTD projektu
+       <select value={textureFile} onChange={event=>void pickTextureFile(event.target.value)} disabled={busy}>
+         <option value="">— wybierz plik tekstur —</option>
+         {ytdFiles.map(f=><option key={f.name} value={f.name}>{f.name}</option>)}
+       </select>
+     </label>
+     <label>Tekstura
+       <select value={textureName} onChange={event=>setTextureName(event.target.value)} disabled={busy||!textureEntries.length}>
+         {textureEntries.map(tex=><option key={tex.name} value={tex.name}>{tex.name}</option>)}
+       </select>
+     </label>
+     <button className="button primary" disabled={busy||shader===null||!textureName} onClick={()=>void applyTexture()}>Zobacz teksturę na modelu</button>
+     <button className="button secondary" disabled={!root.children.length||busy} onClick={resetTexturePreview}>Przywróć materiały</button>
+   </div>
+   <div className="yft-preview"><Viewport root={root} selectedId={null} mode="translate" focusToken={focus}
+     onSelect={id=>{const mesh=id?root.getObjectByProperty('uuid',id):undefined;
+       if(mesh instanceof THREE.Mesh && typeof mesh.userData.shaderId==='number')setShader(mesh.userData.shaderId);
+     }} onChange={()=>{}}/></div>
    <div className="addon-message" role="status">{busy?'Trwa przetwarzanie modelu…':message}</div>
-   <p className="texture-warning">Podgląd YFT nie odtwarza na razie materiałów, animowanych kości, deformacji, kolizji ani wszystkich LOD-ów. Kolory meshów są diagnostyczne. Wygenerowany GLB nie zastępuje pliku YFT i nie może być wgrany bezpośrednio jako gotowy samochód FiveM.</p>
+   <p className="texture-warning">Kliknij część samochodu w podglądzie, aby ustawić jej shader, a następnie wybierz teksturę YTD. To ręczna wizualizacja UV: nie odtwarza automatycznie powiązań materiałów GTA i może wyglądać inaczej niż w FiveM. Nie edytuje YFT ani nie zastępuje pełnego eksportera pojazdów.</p>
  </section>;
 }
