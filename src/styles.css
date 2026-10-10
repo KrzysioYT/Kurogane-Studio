@@ -60,3 +60,6 @@
 .model-doctor-issue:disabled{cursor:default;opacity:.75}
 .model-doctor-stale{color:#e7ba80;font-size:11px;margin:0}
 .model-doctor>small{color:#91aebb;line-height:1.5}
+
+.decal-toolbar input[type=text]{width:125px;max-width:170px;background:#14232e;border:1px solid #436276;color:#e8f5f5;border-radius:4px;padding:7px}
+.decal-toolbar input[type=color]{width:34px;height:29px;border:0;padding:0;background:transparent;cursor:pointer}
