@@ -67,6 +67,7 @@ export function prepareModel(object: THREE.Object3D) {
   // Materials must not be shared between parts; inspector edits only the selected part.
   object.traverse(part => {
     if (part instanceof THREE.Mesh) {
+      part.geometry=part.geometry.clone();
       part.material = Array.isArray(part.material)
         ? part.material.map(mat => mat.clone())
         : part.material.clone();
