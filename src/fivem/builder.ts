@@ -79,12 +79,15 @@ function textValue(xml:string,tag:string):string | undefined {
 }
 export function inferConfig(assets:VehicleAsset[],previous:VehicleConfig=DEFAULTS):VehicleConfig {
  const models=assets.filter(a=>a.name.endsWith('.yft')&&!a.name.endsWith('_hi.yft'));
- const firstModel=models[0]?.name.slice('stream/'.length,-4);
  const vm=originalMeta(assets,'vehicles.meta');
  const hm=originalMeta(assets,'handling.meta');
  const xml=vm?decode(vm.bytes):'';
  const handlingXml=hm?decode(hm.bytes):'';
- const spawn=firstModel??textValue(xml,'modelName')??previous.spawn;
+ const metaModel=textValue(xml,'modelName')?.toLowerCase();
+ const matchingMeta=metaModel&&models.some(a=>a.name==='stream/'+metaModel+'.yft') ? metaModel : undefined;
+ // Main vehicle is usually the shortest YFT; tuning variants are named model_*.
+ const firstModel=matchingMeta??models.map(a=>a.name.slice('stream/'.length,-4)).sort((a,b)=>a.length-b.length)[0];
+ const spawn=firstModel??metaModel??previous.spawn;
  const handling=textValue(xml,'handlingId')??spawn.toUpperCase();
  const texture=textValue(xml,'txdName')??spawn;
  const updatedValues={...previous.handlingValues};
@@ -137,7 +140,10 @@ export function validate(assets:VehicleAsset[],c:VehicleConfig):Check[] {
  if(!Number.isInteger(c.handlingValues.gears)) error('Liczba biegów musi być liczbą całkowitą.');
  const base=assets.filter(a=>a.name.endsWith('.yft')&&!a.name.endsWith('_hi.yft'));
  if(!base.some(a=>a.name==='stream/'+c.spawn+'.yft')) error('Brakuje stream/'+c.spawn+'.yft. Bez modelu GTA addon nie może działać.');
- if(base.length>1) error('Wczytano kilka modeli .yft. Eksport jest dla jednego addonu — rozdziel paczkę.');
+ const otherModels=base.filter(a=>a.name!=='stream/'+c.spawn+'.yft');
+ const unrelated=otherModels.filter(a=>!a.name.startsWith('stream/'+c.spawn+'_'));
+ if(unrelated.length>0) error('Archiwum zawiera inne pojazdy: '+unrelated.map(a=>a.name).join(', ')+'. Rozdziel DLC na osobne addony.');
+ if(otherModels.length>0 && unrelated.length===0) warning('Wykryto '+otherModels.length+' dodatkowych YFT powiązanych z autem (możliwy tuning); zostaną zachowane, ale wymagają carcols.meta.');
  if(assets.some(a=>a.name==='stream/'+c.spawn+'.yft')) {
    const file=assets.find(a=>a.name==='stream/'+c.spawn+'.yft')!;
    const signature=new TextDecoder().decode(file.bytes.subarray(0,4));
