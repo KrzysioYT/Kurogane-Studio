@@ -216,7 +216,7 @@ export default function FiveMWorkshop(){
  return <section className="addon-studio" onDrop={onDrop} onDragOver={onDrag} onDragLeave={(event)=>{event.preventDefault();event.stopPropagation();setDrop(false);}}>
   <div className="addon-head">
     <div><span className="eyebrow">KUROGANE STUDIO / FIVE M TOOLCHAIN</span>
-      <h1>FiveM Vehicle Workshop <span>0.6 ALPHA</span></h1>
+      <h1>FiveM Vehicle Workshop <span>0.7 ALPHA</span></h1>
       <p>Import auta z ZIP lub RPF7, edycja handlingu i tekstur YTD, logotypy oraz eksport addonu.</p></div>
     <button className="button primary" disabled={working||blockers>0||editorText!==savedText||textureDirty} onClick={()=>void exportZip()}>
       {working?'Przetwarzanie…':'⇩ Eksportuj addon ZIP'}
