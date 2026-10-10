@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { createLogoDecal, validateLogoSettings } from '../src/lib/decal';
+import { createLogoDecal, validateLogoSettings, normalizeDecalText } from '../src/lib/decal';
 
 test('decal projects onto GTA-style car panel and retains separate mesh geometry',()=>{
  const body=new THREE.Mesh(new THREE.BoxGeometry(3,1.5,5));
@@ -37,4 +37,13 @@ test('transparent decal can be included in a serialized scene project without ch
  assert.equal(data.object.children?.length,2);
  assert.ok(data.materials?.some((x:{opacity?:number})=>x.opacity===.6));
  assert.ok(decal.geometry.getAttribute('position').count>0);
+});
+
+test('text markings normalize line endings and reject unsafe lengths',()=>{
+ assert.equal(normalizeDecalText('  LSPD\r\n108  '),'LSPD\n108');
+ assert.equal(normalizeDecalText('PATROL DIVISION'),'PATROL DIVISION');
+ assert.throws(()=>normalizeDecalText('   '),/100 znaków/);
+ assert.throws(()=>normalizeDecalText('x'.repeat(101)),/100 znaków/);
+ assert.throws(()=>normalizeDecalText('a\nb\nc\nd'),/trzech wierszy/);
+ assert.throws(()=>normalizeDecalText('LSPD\u0001'),/sterujących/);
 });
