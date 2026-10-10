@@ -2,11 +2,13 @@ import {useMemo,useState} from 'react';
 import * as THREE from 'three';
 import {analyzeMesh,bakeTransform,centerPivot,mapUV,setVehiclePart,separateFaces,smoothNormals,transformUV,VEHICLE_PARTS,weld} from '../lib/modeling';
 import {coplanarFaces,editFaces} from '../lib/topology';
+import {packUVIslands} from '../lib/uv-atlas';
 type Props={mesh:THREE.Mesh;revision:number;faces:number[];faceMode:boolean;setFaces:(faces:number[])=>void;edit:(label:string,operation:()=>void)=>void};
 export default function ModelingPanel({mesh,revision,faces,faceMode,setFaces,edit}:Props){
  const [distance,setDistance]=useState(.1),[inset,setInset]=useState(.2),[tolerance,setTolerance]=useState(.0001);
  const [uvScale,setUVScale]=useState(1),[uvU,setUVU]=useState(0),[uvV,setUVV]=useState(0),[uvAngle,setUVAngle]=useState(0);
  const [projection,setProjection]=useState<'xy'|'xz'|'yz'|'box'>('box');
+ const [chartCount,setChartCount]=useState<number|null>(null);
  const stats=useMemo(()=>analyzeMesh(mesh),[mesh,revision]);
  const uvLines=useMemo(()=>{
   const uv=mesh.geometry.getAttribute('uv'),index=mesh.geometry.index;if(!uv)return '';
@@ -34,9 +36,11 @@ export default function ModelingPanel({mesh,revision,faces,faceMode,setFaces,edi
   </details>
   <details className="property-block"><summary>UV i teksturowanie</summary>
    <select aria-label="Projekcja UV" value={projection} onChange={e=>setProjection(e.target.value as typeof projection)}><option value="box">Box — dopasuj do normalnej</option><option value="xy">Płaszczyzna XY</option><option value="xz">Płaszczyzna XZ</option><option value="yz">Płaszczyzna YZ</option></select>
-   <button onClick={()=>edit('Projekcja UV',()=>mapUV(mesh,projection))}>Generuj UV</button>
+   <button onClick={()=>edit('Projekcja UV',()=>{mapUV(mesh,projection);setChartCount(null);})}>Generuj UV</button>
+   <button onClick={()=>edit('Atlas UV',()=>setChartCount(packUVIslands(mesh)))}>Automatyczny atlas UV (0–1)</button>
+   {chartCount!==null&&<small>Wygenerowano {chartCount} wysp UV. Zapisz projekt, by zachować wynik.</small>}
    <svg viewBox="0 0 200 200" className="uv-preview" aria-label="Podgląd UV"><rect width="200" height="200" fill="#162332"/><path d={uvLines} stroke="#69c5d7" strokeWidth=".5" fill="none"/></svg>
-   <small>Podgląd pierwszych 2000 trójkątów w obszarze 0–1. Projekcja box może nakładać wyspy.</small>
+   <small>Atlas rozdziela zbliżone płaskie powierzchnie w osobne kafelki 0–1. Nie gwarantuje rozpakowania bez nakładania się trójkątów WEWNĄTRZ zakrzywionej wyspy; nie jest jeszcze pełnym UV Unwrap. Projekcja box może nakładać wyspy.</small>
    <label className="model-field">Skala UV<input type="number" step=".1" value={uvScale} onChange={e=>setUVScale(Number(e.target.value))}/></label>
    <label className="model-field">Przesunięcie U<input type="number" step=".05" value={uvU} onChange={e=>setUVU(Number(e.target.value))}/></label>
    <label className="model-field">Przesunięcie V<input type="number" step=".05" value={uvV} onChange={e=>setUVV(Number(e.target.value))}/></label>
