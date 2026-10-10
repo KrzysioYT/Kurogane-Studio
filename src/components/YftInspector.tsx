@@ -11,7 +11,7 @@ import type { VehicleAsset } from '../fivem/types';
 import './YftInspector.css';
 
 type MeshData={name:string;vertices:number[];normals:number[];uv:number[];indices:number[];shaderId:number;suggestedTexture?:string|null};
-type Props={files:VehicleAsset[];onUpdateYft?:(name:string,bytes:Uint8Array)=>void;onUpdateYtd?:(name:string,bytes:Uint8Array)=>void;onDirtyChange?:(dirty:boolean)=>void};
+type Props={files:VehicleAsset[];onUpdateYft?:(name:string,bytes:Uint8Array)=>void;onUpdateYtd?:(name:string,bytes:Uint8Array)=>void;onDirtyChange?:(dirty:boolean)=>void;onBusyChange?:(busy:boolean)=>void;paintBlocked?:boolean};
 type TextureEntry={name:string;width:number;height:number;format:string;levels:number};
 function fromMeshes(data:MeshData[],root:THREE.Group){
  clearModel(root);
@@ -34,7 +34,7 @@ function fromMeshes(data:MeshData[],root:THREE.Group){
    root.add(mesh);
  }
 }
-export default function YftInspector({files,onUpdateYft,onUpdateYtd,onDirtyChange}:Props){
+export default function YftInspector({files,onUpdateYft,onUpdateYtd,onDirtyChange,onBusyChange,paintBlocked=false}:Props){
  const [filename,setFilename]=useState('');
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState('Wybierz plik YFT z importowanego addonu.');
@@ -65,6 +65,7 @@ export default function YftInspector({files,onUpdateYft,onUpdateYtd,onDirtyChang
  const choices=files.filter(f=>f.name.toLowerCase().endsWith('.yft')&&!f.name.toLowerCase().endsWith('_hi.yft'));
  const ytdFiles=files.filter(f=>f.name.toLowerCase().endsWith('.ytd'));
  useEffect(()=>{onDirtyChange?.(edited);},[edited,onDirtyChange]);
+ useEffect(()=>{onBusyChange?.(busy);},[busy,onBusyChange]);
  const load=async(name:string)=>{
    if(edited&&!window.confirm('Masz niezapisane zmiany geometrii YFT. Porzucić je?'))return;
    const oldTextures=new Set<THREE.Texture>();
@@ -211,6 +212,7 @@ export default function YftInspector({files,onUpdateYft,onUpdateYtd,onDirtyChang
  };
  const stampOnYtd=async(mesh:THREE.Mesh,uv:THREE.Vector2|null)=>{
    if(!paintMode || busy || !onUpdateYtd)return;
+   if(paintBlocked){setMessage('Masz niezapisane zmiany w edytorze Retexture. Zapisz je przed malowaniem na modelu YFT.');return;}
    const img=logoImage.current;
    if(!img||!textureFile||!textureName||shader===null){setMessage('Najpierw wybierz logo, plik YTD, teksturę i shader.');return;}
    if(mesh.userData.shaderId!==shader){setMessage('Kliknięty mesh należy do innego shadera. Zmień grupę materiału przed malowaniem.');return;}
@@ -323,7 +325,7 @@ export default function YftInspector({files,onUpdateYft,onUpdateYtd,onDirtyChang
      <span>{logoReady||'Brak logo'}</span>
      <label>Szerokość w teksturze (px) <input type="number" min="8" max="2048" step="8" value={stampWidth} onChange={e=>setStampWidth(Number(e.target.value))}/></label>
      <label>Obrót (°) <input type="number" min="-3600" max="3600" step="15" value={stampAngle} onChange={e=>setStampAngle(Number(e.target.value))}/></label>
-     <button className={paintMode?'button primary':'button secondary'} disabled={busy||!logoReady||!textureName||!onUpdateYtd} onClick={()=>{setPaintMode(v=>!v);setVertexMode(false);setSelectedId(null);setSelectedVertex(null);}}>{paintMode?'Malowanie włączone — kliknij karoserię':'Maluj logo na YFT → YTD'}</button>
+     <button className={paintMode?'button primary':'button secondary'} disabled={busy||paintBlocked||!logoReady||!textureName||!onUpdateYtd} onClick={()=>{setPaintMode(v=>!v);setVertexMode(false);setSelectedId(null);setSelectedVertex(null);}}>{paintMode?'Malowanie włączone — kliknij karoserię':'Maluj logo na YFT → YTD'}</button>
    </div>
    <div className="yft-preview"><Viewport root={root} surfaceMode={paintMode} onSurfaceHit={(mesh,_point,_normal,uv)=>void stampOnYtd(mesh,uv)} selectedId={selectedId} vertexMode={vertexMode} selectedVertexIndex={selectedVertex} geometryRevision={geometryRevision} mode="translate" focusToken={focus}
      onSelect={id=>{const mesh=id?root.getObjectByProperty('uuid',id):undefined;
