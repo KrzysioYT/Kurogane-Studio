@@ -45,6 +45,7 @@ export default function App() {
     return group;
   }, []);
   const fileRef = useRef<HTMLInputElement>(null);
+  const textureRef = useRef<HTMLInputElement>(null);
   const [revision, setRevision] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeToolId, setActiveToolId] = useState('vehicle-editor-v2');
@@ -138,6 +139,40 @@ export default function App() {
     if (key === 'roughness' && typeof value === 'number') material.roughness = value;
     material.needsUpdate = true;
     touch();
+  };
+
+  const applyTexture = async (file: File) => {
+    if (!selectedMesh || Array.isArray(selectedMesh.material)) {
+      setStatus('Zaznacz pojedynczy mesh, aby przypisać teksturę.');
+      return;
+    }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 32 * 1024 * 1024) {
+      setStatus('Tekstura musi być PNG/JPG/WebP i mieć maksymalnie 32 MiB.');
+      return;
+    }
+    if (!selectedMesh.geometry.hasAttribute('uv')) {
+      setStatus('Wybrana część nie ma współrzędnych UV. Tekstura wymaga UV.');
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const texture = await new THREE.TextureLoader().loadAsync(url);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.flipY = false;
+      if (!(selectedMesh.material instanceof THREE.MeshStandardMaterial)) {
+        selectedMesh.material = new THREE.MeshStandardMaterial({ color: '#ffffff' });
+      }
+      const material = selectedMesh.material as THREE.MeshStandardMaterial;
+      material.map = texture;
+      material.color.set('#ffffff');
+      material.needsUpdate = true;
+      touch();
+      setStatus(`Tekstura ${file.name} została przypisana do: ${selectedMesh.name || 'mesh'}.`);
+    } catch (error) {
+      setStatus(`Błąd wczytywania tekstury: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
   };
 
   const renameSelected = (name: string) => {
@@ -252,6 +287,13 @@ export default function App() {
           <div className="property-block">
             <h3>Materiał</h3>
             {mat ? <><div className="color-row"><label>Kolor bazowy</label><input aria-label="Kolor bazowy" type="color" value={'#' + mat.color.getHexString()} onChange={event => updateMaterial('color', event.target.value)}/><code>#{mat.color.getHexString()}</code></div>
+              <input hidden ref={textureRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={event => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                if (file) void applyTexture(file);
+              }}/>
+              <button className="texture-button" onClick={() => textureRef.current?.click()}>↥ Wczytaj teksturę PNG / JPG</button>
+              {mat.map && <div className="texture-hint">✓ Tekstura przypisana do elementu</div>}
               <label className="range-field"><span>Metaliczność <strong>{Math.round(mat.metalness * 100)}%</strong></span><input type="range" min="0" max="1" step="0.01" value={mat.metalness} onChange={event => updateMaterial('metalness', Number(event.target.value))}/></label>
               <label className="range-field"><span>Szorstkość <strong>{Math.round(mat.roughness * 100)}%</strong></span><input type="range" min="0" max="1" step="0.01" value={mat.roughness} onChange={event => updateMaterial('roughness', Number(event.target.value))}/></label>
             </> : <p className="muted">Materiał typu PBR niedostępny. Wybierz pojedynczy mesh.</p>}
