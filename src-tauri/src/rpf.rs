@@ -19,7 +19,7 @@ const META_NAMES: &[&str] = &[
     "vehiclelayouts.meta",
 ];
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpfAsset {
     name: String,
@@ -27,7 +27,7 @@ pub struct RpfAsset {
     source: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpfImport {
     source_name: String,
