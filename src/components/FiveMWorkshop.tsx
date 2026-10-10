@@ -62,6 +62,7 @@ export default function FiveMWorkshop(){
  const [savedText,setSavedText]=useState('');
  const [editingError,setEditingError]=useState('');
  const [textureDirty,setTextureDirty]=useState(false);
+ const [yftDirty,setYftDirty]=useState(false);
  const [projectRevision,setProjectRevision]=useState(0);
  const replaceRef=useRef<HTMLInputElement>(null);
  const fileRef=useRef<HTMLInputElement>(null);
@@ -77,7 +78,7 @@ export default function FiveMWorkshop(){
    setConfig(previous=>({...previous,[key]:value}));
  };
  const loadImported=(imported:ImportedAssets)=>{
-   setData(imported);setTextureDirty(false);setProjectRevision(n=>n+1);
+   setData(imported);setTextureDirty(false);setYftDirty(false);setProjectRevision(n=>n+1);
    setActiveFile(null);setEditorText('');setSavedText('');setEditingError('');
    setConfig(previous=>inferConfig(imported.assets,{
      ...DEFAULTS,author:previous.author,description:previous.description,version:previous.version,
@@ -91,7 +92,7 @@ export default function FiveMWorkshop(){
  };
  const choose=async(files:File[])=>{
    if(working||files.length===0)return;
-   if((textureDirty||editorText!==savedText) && !window.confirm('Masz niezapisane zmiany w projekcie. Otworzyć nowy ZIP i je utracić?'))return;
+   if((textureDirty||yftDirty||editorText!==savedText) && !window.confirm('Masz niezapisane zmiany w projekcie. Otworzyć nowy ZIP i je utracić?'))return;
    setWorking(true);setMessage('Wczytywanie zasobów pojazdu…');
    try {
      // RPF must go through Rust so resource headers (RSC7) are rebuilt correctly.
@@ -106,7 +107,7 @@ export default function FiveMWorkshop(){
  };
  const importRpf=async()=>{
    if(working)return;
-   if((textureDirty||editorText!==savedText) && !window.confirm('Masz niezapisane zmiany w projekcie. Otworzyć nowy RPF i je utracić?'))return;
+   if((textureDirty||yftDirty||editorText!==savedText) && !window.confirm('Masz niezapisane zmiany w projekcie. Otworzyć nowy RPF i je utracić?'))return;
    setWorking(true);setMessage('Analizuję RPF7 i wyodrębniam pliki GTA...');
    try{
      const imported=await pickRpfArchive();
@@ -173,6 +174,7 @@ export default function FiveMWorkshop(){
  const exportZip=async()=>{
    if(working||blockers)return;
    if(textureDirty){setMessage('Najpierw zapisz teksturę w YTD w zakładce Retexture / Loga.');return;}
+   if(yftDirty){setMessage('Najpierw zapisz zmiany w geometrii YFT lub odrzuć je w podglądzie 3D.');return;}
    if(editorText!==savedText){
      setMessage('Najpierw kliknij Zapisz w projekcie przy edytowanym pliku, potem eksportuj ZIP.');return;
    }
@@ -199,6 +201,10 @@ export default function FiveMWorkshop(){
    setData(previous=>({...previous,assets:previous.assets.map(file=>file.name===name?{...file,bytes,source:'YTD edytowany w Kurogane Studio'}:file)}));
    setMessage('Tekstura YTD zaktualizowana w pamięci projektu. Eksportuj ZIP, aby zapisać całe auto.');
  };
+ const updateYft=(name:string,bytes:Uint8Array)=>{
+   setData(previous=>({...previous,assets:previous.assets.map(file=>file.name===name?{...file,bytes,source:'Eksperymentalna edycja YFT w Kurogane Studio'}:file)}));
+   setMessage('Zmodyfikowany YFT zapisany w pamięci projektu. Eksportuj ZIP wyłącznie na serwer testowy.');
+ };
  const preview=useMemo(()=>{
    try{
      const metas=generatedMetas(data.assets,config);
@@ -221,7 +227,7 @@ export default function FiveMWorkshop(){
     <div><span className="eyebrow">KUROGANE STUDIO / FIVE M TOOLCHAIN</span>
       <h1>FiveM Vehicle Workshop <span>0.9 ALPHA</span></h1>
       <p>Import auta z ZIP lub RPF7, edycja handlingu i tekstur YTD, logotypy oraz eksport addonu.</p></div>
-    <button className="button primary" disabled={working||blockers>0||editorText!==savedText||textureDirty} onClick={()=>void exportZip()}>
+    <button className="button primary" disabled={working||blockers>0||editorText!==savedText||textureDirty||yftDirty} onClick={()=>void exportZip()}>
       {working?'Przetwarzanie…':'⇩ Eksportuj addon ZIP'}
     </button>
   </div>
@@ -289,7 +295,7 @@ export default function FiveMWorkshop(){
       <div style={{display:page==='textures'?'block':'none'}}>
         <TextureStudio key={projectRevision} files={data.assets} onUpdate={updateYtd} onDirtyChange={setTextureDirty}/>
       </div>
-      <div style={{display:page==='model'?'block':'none'}}><YftInspector key={projectRevision} files={data.assets}/></div>
+      <div style={{display:page==='model'?'block':'none'}}><YftInspector key={projectRevision} files={data.assets} onUpdateYft={updateYft} onDirtyChange={setYftDirty}/></div>
       {page==='files'&&<div className="addon-panel">
         <h2>Pliki projektu addonu</h2><p className="addon-help">Otwarty ZIP nie jest nadpisywany. Możesz zmieniać pliki tekstowe, podmieniać binaria i eksportować nowy ZIP. Oryginalnych plików modelu YFT nie modyfikujemy geometrycznie.</p>
         <div className="addon-message">Załadowano {allProjectFiles.length} plików, w tym {extraFiles.length} plików dodatkowych. {extraFiles.some(f=>/\\.(lua|js)$/i.test(f.name))?'Uwaga: paczka zawiera skrypty — sprawdź ich bezpieczeństwo przed instalacją na serwerze.':''}</div>
