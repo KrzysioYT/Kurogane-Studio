@@ -11,15 +11,21 @@ type Props = {
   focusToken: number;
   onSelect: (id: string | null) => void;
   onChange: () => void;
+  vertexMode?: boolean;
+  selectedVertexIndex?: number | null;
+  geometryRevision?: number;
+  onVertexSelect?: (id:string|null,index:number|null)=>void;
 };
-type ThreeContext = { renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera; controls: OrbitControls; transform: TransformControls; root: THREE.Group; scene: THREE.Scene; fit: () => void };
+type ThreeContext = { renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera; controls: OrbitControls; transform: TransformControls; marker: THREE.Mesh; root: THREE.Group; scene: THREE.Scene; fit: () => void };
 
-export default function Viewport({ root, selectedId, mode, focusToken, onSelect, onChange }: Props) {
+export default function Viewport({ root, selectedId, mode, focusToken, onSelect, onChange, vertexMode = false, selectedVertexIndex = null, geometryRevision = 0, onVertexSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ThreeContext | null>(null);
   const onSelectRef = useRef(onSelect);
   const onChangeRef = useRef(onChange);
-  useEffect(() => { onSelectRef.current = onSelect; onChangeRef.current = onChange; }, [onSelect, onChange]);
+  const onVertexSelectRef=useRef(onVertexSelect);
+  const vertexState=useRef({enabled:vertexMode,selectedId,index:selectedVertexIndex});
+  useEffect(() => { onSelectRef.current = onSelect; onChangeRef.current = onChange; onVertexSelectRef.current=onVertexSelect;vertexState.current={enabled:vertexMode,selectedId,index:selectedVertexIndex}; }, [onSelect, onChange, onVertexSelect, vertexMode, selectedId, selectedVertexIndex]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -70,10 +76,30 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
     const transform = new TransformControls(camera, renderer.domElement);
     transform.setSize(0.85);
     scene.add(transform.getHelper());
+    const marker=new THREE.Mesh(new THREE.SphereGeometry(.075,12,8),new THREE.MeshBasicMaterial({color:0xffae52,depthTest:false}));
+    marker.visible=false;marker.renderOrder=1000;scene.add(marker);
     transform.addEventListener('dragging-changed', event => {
       controls.enabled = !event.value;
     });
-    transform.addEventListener('objectChange', () => onChangeRef.current());
+    transform.addEventListener('objectChange', () => {
+      const v=vertexState.current;
+      if(v.enabled && v.selectedId && v.index!==null && marker.visible){
+        const object=root.getObjectByProperty('uuid',v.selectedId);
+        if(object instanceof THREE.Mesh){
+          const pos=object.geometry.getAttribute('position');
+          if(pos instanceof THREE.BufferAttribute && v.index>=0 && v.index<pos.count){
+            object.updateWorldMatrix(true,false);
+            const local=object.worldToLocal(marker.position.clone());
+            pos.setXYZ(v.index,local.x,local.y,local.z);
+            pos.needsUpdate=true;
+            object.geometry.computeVertexNormals();
+            object.geometry.computeBoundingBox();
+            object.geometry.computeBoundingSphere();
+          }
+        }
+      }
+      onChangeRef.current();
+    });
 
     function fit() {
       const bounds = new THREE.Box3().setFromObject(root);
@@ -90,7 +116,7 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
       camera.updateProjectionMatrix();
       controls.update();
     }
-    ctxRef.current = { renderer, camera, controls, transform, root, scene, fit };
+    ctxRef.current = { renderer, camera, controls, transform, marker, root, scene, fit };
     fit();
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -104,7 +130,26 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
       pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObjects(root.children, true).find(i => i.object.visible && i.object instanceof THREE.Mesh);
-      onSelectRef.current(hit?.object.uuid ?? null);
+      if(vertexState.current.enabled){
+        if(hit?.face && hit.object instanceof THREE.Mesh){
+          const mesh=hit.object;
+          const position=mesh.geometry.getAttribute('position');
+          mesh.updateWorldMatrix(true,false);
+          if(position){
+            let bestIndex:number|null=null, bestDistance=Infinity;
+            for(const index of [hit.face.a,hit.face.b,hit.face.c]){
+              if(index<0||index>=position.count)continue;
+              const p=new THREE.Vector3().fromBufferAttribute(position,index);
+              mesh.localToWorld(p);
+              const distance=p.distanceToSquared(hit.point);
+              if(distance<bestDistance){bestDistance=distance;bestIndex=index;}
+            }
+            onVertexSelectRef.current?.(mesh.uuid,bestIndex);
+            return;
+          }
+        }
+        onVertexSelectRef.current?.(null,null);
+      }else onSelectRef.current(hit?.object.uuid ?? null);
     }
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
@@ -129,6 +174,9 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
       transform.detach();
       transform.dispose();
+      marker.geometry.dispose();
+      (marker.material as THREE.Material).dispose();
+      scene.remove(marker);
       controls.dispose();
       scene.remove(root);
       grid.geometry.dispose();
@@ -145,11 +193,23 @@ export default function Viewport({ root, selectedId, mode, focusToken, onSelect,
     const context = ctxRef.current;
     if (!context) return;
     const object = selectedId ? root.getObjectByProperty('uuid', selectedId) : undefined;
-    if (object) context.transform.attach(object);
-    else context.transform.detach();
-  }, [root, selectedId]);
+    if(vertexMode && object instanceof THREE.Mesh && selectedVertexIndex!==null){
+      const pos=object.geometry.getAttribute('position');
+      if(pos && selectedVertexIndex>=0 && selectedVertexIndex<pos.count){
+        object.updateWorldMatrix(true,false);
+        context.marker.position.copy(object.localToWorld(new THREE.Vector3().fromBufferAttribute(pos,selectedVertexIndex)));
+        context.marker.visible=true;
+        context.transform.setMode('translate');
+        context.transform.attach(context.marker);
+      }else{context.marker.visible=false;context.transform.detach();}
+    }else{
+      context.marker.visible=false;
+      if(object)context.transform.attach(object);
+      else context.transform.detach();
+    }
+  }, [root, selectedId, vertexMode, selectedVertexIndex, geometryRevision]);
 
-  useEffect(() => { ctxRef.current?.transform.setMode(mode); }, [mode]);
+  useEffect(() => { ctxRef.current?.transform.setMode(vertexMode?'translate':mode); }, [mode,vertexMode]);
   useEffect(() => { ctxRef.current?.fit(); }, [focusToken]);
   return <div ref={containerRef} className="viewport" aria-label="Edytor sceny 3D"/>;
 }
