@@ -84,3 +84,21 @@ test('imported ZIP maps nested stream/data files, ignores other scripts',async()
  assert.equal(c.spawn,'mycar');
  assert.equal(c.resource,'ks_mycar');
 });
+
+test('RPF single car with tuning YFT variants stays a single resource',async()=>{
+ const {config,files}=setup();
+ files.unshift({name:'stream/ks_police_bumper_1.yft',source:'rpf',bytes:new Uint8Array([82,83,67,55,1])});
+ files.push({
+   name:'data/vehicles.meta',source:'rpf',
+   bytes:new TextEncoder().encode('<CVehicleModelInfo__InitDataList><InitDatas><Item><modelName>ks_police</modelName><txdName>ks_police</txdName><handlingId>KS_POLICE</handlingId></Item></InitDatas></CVehicleModelInfo__InitDataList>')
+ });
+ assert.equal(inferConfig(files).spawn,'ks_police');
+ assert.deepEqual(validate(files,config).filter(check=>check.level==='error'),[]);
+ const zip=await JSZip.loadAsync(await createAddonZip(files,config));
+ assert.ok(zip.file(config.resource+'/stream/ks_police_bumper_1.yft'));
+});
+test('RPF including unrelated second car is blocked',()=>{
+ const {config,files}=setup();
+ files.push({name:'stream/anothercar.yft',source:'rpf',bytes:new Uint8Array([82,83,67,55])});
+ assert.ok(validate(files,config).some(c=>c.level==='error'&&c.text.includes('inne pojazdy')));
+});
