@@ -40,3 +40,30 @@ Import GLTF wymagający zewnętrznych tekstur/plików `.bin` nie jest jeszcze ob
 - Wszystkie konwersje GTA pozostają oddzielnym przyszłym modułem, bez fałszywego deklarowania kompatybilności.
 
 Kodu FiveForge nie kopiowano. Nazwy funkcji w roadmapie są wyłącznie odniesieniem do zakresu planowanego produktu.
+
+
+## FiveM Vehicle Workshop (v0.2 alpha)
+
+Kliknij **FiveM Add-on** w górnym pasku (obok przycisków edytora 3D). Importuj istniejący resource ZIP albo zaznacz pliki GTA `.yft`, `_hi.yft`, `.ytd` i opcjonalnie `.meta`. Program:
+
+1. Rozpoznaje pliki stream i obsługiwane metadane z ZIP (w tym podfoldery); odrzuca obce skrypty i ścieżki wychodzące poza archiwum.
+2. Próbuje wypełnić spawn, TXD, handling, audio i parametry auta z importowanego zestawu.
+3. Pozwala zmienić model/spawn, nazwy, producenta, klasę pojazdu, koła, tablice, audio, layout, flagi i 18 podstawowych parametrów handlingu.
+4. W trybie zachowania oryginału podmienia wybrane pola istniejącego `vehicles.meta`, `handling.meta` i `carvariations.meta` bez usuwania pozostałych właściwości. Własne `carcols.meta` (modkity/syreny) i `vehiclelayouts.meta` zachowuje bez zmian.
+5. Jeśli brakuje metadanych, tworzy bazowe `vehicles.meta`, `handling.meta`, `carvariations.meta`, dołącza poprawny `fxmanifest.lua`, opcjonalny `vehicle_names.lua`, README i linię `ensure`.
+6. Eksportuje ZIP z folderem resource, zawierającym oryginalne pliki binarne GTA oraz wygenerowane/zmienione metadata. Brak pliku `[spawn].yft` **blokuje eksport**.
+
+Instalacja resource: rozpakuj ZIP do `server-data/resources/[cars]/`, następnie `ensure nazwa_resource` w `server.cfg`. Testuj na własnym serwerze, mając prawo do wykorzystywanego modelu.
+
+### Ograniczenia
+
+- Import `.yft/.ytd` jest importem **binarnych plików do paczki**, NIE wyświetleniem ich geometrii w edytorze 3D i NIE konwersją do innych formatów.
+- Warsztat obsługuje na ten etap **pojedynczy samochód osobowy**. Modele specjalne (heli, łodzie, pociągi, motocykle), zestawy wielopojazdowe oraz ELS wymagają osobnych modułów.
+- Wygenerowane metadata są ustawieniami startowymi, nie gwarantują pełnej kompatybilności z dowolnym modelem. Importowanie istniejącego poprawnego zestawu metadata zapewnia lepszy rezultat niż automatyczny szablon.
+- Program nie potrafi tworzyć kolizji, kości/riggingu, tuningu, świateł ELS, LOD-ów i fizycznych komponentów 3D samym manifestem. Weryfikacja uruchomienia addonu, spawnu i jazdy musi odbyć się w FiveM.
+- Granica wejściowa: 600 plików w ZIP, 150 MiB na pojedynczy plik, 256 MiB danych, 256 MiB zapisany ZIP. Program nie wykonuje kodu z importowanego ZIP.
+- W plikach YAML/JSX/Tauri nie ma telemetrii ani transferu modeli na serwer.
+
+Weryfikacja automatyczna: `npm test` oraz `npm run build`. Instalator NSIS buduje workflow GitHub Actions; test w FiveM jest dodatkowym etapem manualnym.
+
+Szczegóły: `docs/FIVEM_ADDON.md`.
