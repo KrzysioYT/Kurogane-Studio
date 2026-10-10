@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
+import { loadAddonProjectZip, readText, updateFileText } from '../src/fivem/zip-project';
+import { mergeVehicleManifest } from '../src/fivem/manifest';
 import { JSDOM } from 'jsdom';
 const dom = new JSDOM('');
 Object.assign(globalThis, { DOMParser: dom.window.DOMParser, XMLSerializer: dom.window.XMLSerializer });
@@ -104,4 +106,61 @@ test('RPF including unrelated second car is blocked',()=>{
  const {config,files}=setup();
  files.push({name:'stream/anothercar.yft',source:'rpf',bytes:new Uint8Array([82,83,67,55])});
  assert.ok(validate(files,config).some(c=>c.level==='error'&&c.text.includes('inne pojazdy')));
+});
+
+test('ZIP project roundtrip preserves custom scripts, assets and manifest registrations',async()=>{
+ const {config,files}=setup();
+ const zip=new JSZip();
+ const root='ks_police/';
+ for(const file of files)zip.file(root+file.name,file.bytes);
+ zip.file(root+'data/vehicles.meta','<CVehicleModelInfo__InitDataList><InitDatas><Item><modelName>ks_police</modelName><txdName>ks_police</txdName><handlingId>KS_POLICE</handlingId></Item></InitDatas></CVehicleModelInfo__InitDataList>');
+ zip.file(root+'client/extras.lua',"print('custom marker')");
+ zip.file(root+'html/images/logo.png',new Uint8Array([4,8,15,16,23,42]));
+ zip.file(root+'fxmanifest.lua',"fx_version 'cerulean'\ngame 'gta5'\nclient_script 'client/extras.lua'\nfiles { 'data/vehicles.meta' }\ndata_file 'VEHICLE_METADATA_FILE' 'data/vehicles.meta'\n");
+ const bytes=await zip.generateAsync({type:'uint8array'});
+ const file={name:'vehicle.zip',size:bytes.length,arrayBuffer:async()=>Uint8Array.from(bytes).buffer} as File;
+ const project=await loadAddonProjectZip(file);
+ assert.equal(project.originalResource,'ks_police');
+ assert.equal(project.extraFiles.length,3);
+ const originalCode=project.extraFiles.find(x=>x.name==='client/extras.lua')!;
+ const edited=updateFileText(project.extraFiles,'client/extras.lua',"print('edited')");
+ assert.equal(readText(edited.find(x=>x.name==='client/extras.lua')!),"print('edited')");
+ const result=await JSZip.loadAsync(await createAddonZip(project.assets,config,edited));
+ const prefix=config.resource+'/';
+ assert.equal(await result.file(prefix+'client/extras.lua')!.async('string'),"print('edited')");
+ assert.deepEqual([...await result.file(prefix+'html/images/logo.png')!.async('uint8array')],[4,8,15,16,23,42]);
+ const manifest=await result.file(prefix+'fxmanifest.lua')!.async('string');
+ assert.match(manifest,/client_script 'client\/extras\.lua'/);
+ assert.match(manifest,/data_file 'VEHICLE_METADATA_FILE' 'data\/vehicles\.meta'/);
+ assert.equal((manifest.match(/data_file 'VEHICLE_METADATA_FILE'/g)??[]).length,1);
+ assert.equal(readText(originalCode),"print('custom marker')");
+});
+test('ZIP project rejects path traversal and unsafe executables without running files',async()=>{
+ const zip=new JSZip();
+ zip.file('mycar/stream/mycar.yft',new Uint8Array([82,83,67,55]));
+ zip.file('../evil.lua',"print('oops')");
+ zip.file('mycar/hack.exe',new Uint8Array([77,90]));
+ const bytes=await zip.generateAsync({type:'uint8array'});
+ const file={name:'vehicle.zip',size:bytes.length,arrayBuffer:async()=>Uint8Array.from(bytes).buffer} as File;
+ const project=await loadAddonProjectZip(file);
+ assert.deepEqual(project.assets.map(x=>x.name),['stream/mycar.yft']);
+ assert.equal(project.extraFiles.length,0);
+ assert.ok(project.ignored>=2);
+});
+test('ZIP with two different fxmanifest files is rejected',async()=>{
+ const zip=new JSZip();
+ zip.file('a/fxmanifest.lua',"fx_version 'cerulean'");
+ zip.file('b/fxmanifest.lua',"fx_version 'cerulean'");
+ const bytes=await zip.generateAsync({type:'uint8array'});
+ const file={name:'multi.zip',size:bytes.length,arrayBuffer:async()=>Uint8Array.from(bytes).buffer} as File;
+ await assert.rejects(loadAddonProjectZip(file),/wiele fxmanifest/);
+});
+test('existing manifest retains script declarations and updates author/version',()=>{
+ const {config}=setup();
+ const raw="fx_version 'cerulean'\nauthor 'Old Author'\nversion '0.0.1'\nclient_script 'client.lua'\n";
+ const merged=mergeVehicleManifest(raw,config,['vehicles.meta','handling.meta'],true);
+ assert.match(merged,/client_script 'client\.lua'/);
+ assert.match(merged,/author 'Krzysio_YT'/);
+ assert.match(merged,/version '1\.0\.0'/);
+ assert.match(merged,/data_file 'HANDLING_FILE' 'data\/handling\.meta'/);
 });
