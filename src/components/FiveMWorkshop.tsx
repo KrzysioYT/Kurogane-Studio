@@ -62,6 +62,7 @@ export default function FiveMWorkshop(){
  const [savedText,setSavedText]=useState('');
  const [editingError,setEditingError]=useState('');
  const [textureDirty,setTextureDirty]=useState(false);
+ const [projectRevision,setProjectRevision]=useState(0);
  const replaceRef=useRef<HTMLInputElement>(null);
  const fileRef=useRef<HTMLInputElement>(null);
  const checks=useMemo(()=>validate(data.assets,config),[data.assets,config]);
@@ -76,7 +77,7 @@ export default function FiveMWorkshop(){
    setConfig(previous=>({...previous,[key]:value}));
  };
  const loadImported=(imported:ImportedAssets)=>{
-   setData(imported);setTextureDirty(false);
+   setData(imported);setTextureDirty(false);setProjectRevision(n=>n+1);
    setActiveFile(null);setEditorText('');setSavedText('');setEditingError('');
    setConfig(previous=>inferConfig(imported.assets,{
      ...DEFAULTS,author:previous.author,description:previous.description,version:previous.version,
@@ -90,6 +91,7 @@ export default function FiveMWorkshop(){
  };
  const choose=async(files:File[])=>{
    if(working||files.length===0)return;
+   if((textureDirty||editorText!==savedText) && !window.confirm('Masz niezapisane zmiany w projekcie. Otworzyć nowy ZIP i je utracić?'))return;
    setWorking(true);setMessage('Wczytywanie zasobów pojazdu…');
    try {
      // RPF must go through Rust so resource headers (RSC7) are rebuilt correctly.
@@ -104,6 +106,7 @@ export default function FiveMWorkshop(){
  };
  const importRpf=async()=>{
    if(working)return;
+   if((textureDirty||editorText!==savedText) && !window.confirm('Masz niezapisane zmiany w projekcie. Otworzyć nowy RPF i je utracić?'))return;
    setWorking(true);setMessage('Analizuję RPF7 i wyodrębniam pliki GTA...');
    try{
      const imported=await pickRpfArchive();
@@ -284,9 +287,9 @@ export default function FiveMWorkshop(){
         <button className="button secondary" onClick={()=>setConfig(p=>({...p,handlingValues:{...DEFAULTS.handlingValues}}))}>Przywróć bazowy handling</button>
       </div>}
       <div style={{display:page==='textures'?'block':'none'}}>
-        <TextureStudio files={data.assets} onUpdate={updateYtd} onDirtyChange={setTextureDirty}/>
+        <TextureStudio key={projectRevision} files={data.assets} onUpdate={updateYtd} onDirtyChange={setTextureDirty}/>
       </div>
-      <div style={{display:page==='model'?'block':'none'}}><YftInspector files={data.assets}/></div>
+      <div style={{display:page==='model'?'block':'none'}}><YftInspector key={projectRevision} files={data.assets}/></div>
       {page==='files'&&<div className="addon-panel">
         <h2>Pliki projektu addonu</h2><p className="addon-help">Otwarty ZIP nie jest nadpisywany. Możesz zmieniać pliki tekstowe, podmieniać binaria i eksportować nowy ZIP. Oryginalnych plików modelu YFT nie modyfikujemy geometrycznie.</p>
         <div className="addon-message">Załadowano {allProjectFiles.length} plików, w tym {extraFiles.length} plików dodatkowych. {extraFiles.some(f=>/\\.(lua|js)$/i.test(f.name))?'Uwaga: paczka zawiera skrypty — sprawdź ich bezpieczeństwo przed instalacją na serwerze.':''}</div>
