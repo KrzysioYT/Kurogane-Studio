@@ -1,5 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import Viewport from './Viewport';
 import { clearModel } from '../lib/demo';
@@ -8,7 +8,8 @@ import type { VehicleAsset } from '../fivem/types';
 import './YftInspector.css';
 
 type MeshData={name:string;vertices:number[];normals:number[];uv:number[];indices:number[];shaderId:number;suggestedTexture?:string|null};
-type Props={files:VehicleAsset[]};
+type Props={files:VehicleAsset[];onUpdateYft?:(name:string,bytes:Uint8Array)=>void};
+type Patch={meshIndex:number;vertexIndex:number;x:number;y:number;z:number};
 type TextureEntry={name:string;width:number;height:number;format:string;levels:number};
 function fromMeshes(data:MeshData[],root:THREE.Group){
  clearModel(root);
@@ -31,7 +32,7 @@ function fromMeshes(data:MeshData[],root:THREE.Group){
    root.add(mesh);
  }
 }
-export default function YftInspector({files}:Props){
+export default function YftInspector({files,onUpdateYft}:Props){
  const [filename,setFilename]=useState('');
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState('Wybierz plik YFT z importowanego addonu.');
@@ -39,6 +40,12 @@ export default function YftInspector({files}:Props){
  const [focus,setFocus]=useState(0);
  const [shaderIds,setShaderIds]=useState<number[]>([]);
  const [shader,setShader]=useState<number|null>(null);
+ const [vertexMode,setVertexMode]=useState(false);
+ const [selectedId,setSelectedId]=useState<string|null>(null);
+ const [selectedVertex,setSelectedVertex]=useState<number|null>(null);
+ const [edited,setEdited]=useState(false);
+ const [geometryRevision,setGeometryRevision]=useState(0);
+ const originalMeshes=useRef<MeshData[]>([]);
  const [textureSuggestions,setTextureSuggestions]=useState<Record<number,string>>({});
  const [textureFile,setTextureFile]=useState('');
  const [textureName,setTextureName]=useState('');
@@ -54,6 +61,7 @@ export default function YftInspector({files}:Props){
    }
    for(const texture of oldTextures)texture.dispose();
    setFilename(name);clearModel(root);setStats({meshCount:0,triangles:0});setShaderIds([]);setShader(null);setTextureSuggestions({});
+   setVertexMode(false);setSelectedId(null);setSelectedVertex(null);setEdited(false);originalMeshes.current=[];
    if(!name)return;
    if(!isTauri()){setMessage('Podgląd YFT wymaga aplikacji Windows Tauri.');return;}
    const file=files.find(f=>f.name===name);
@@ -62,6 +70,8 @@ export default function YftInspector({files}:Props){
    try{
      const parts=await invoke<MeshData[]>('yft_preview',{bytes:Array.from(file.bytes)});
      fromMeshes(parts,root);
+     if(root.children.length!==parts.length)throw new Error('Niepełne odczytanie geometrii YFT; zapis zmian jest niedostępny.');
+     originalMeshes.current=parts;
      const shaders=[...new Set(parts.map(part=>part.shaderId))].sort((a,b)=>a-b);
      setShaderIds(shaders);setShader(shaders[0]??null);
      const suggestions:Record<number,string>={};
@@ -150,6 +160,46 @@ export default function YftInspector({files}:Props){
    }catch(error){setMessage('Błąd podglądu UV: '+String(error));}
    finally{setBusy(false);}
  };
+ const collectPatches=():Patch[]=>{
+   const patches:Patch[]=[];
+   for(const [meshIndex,original] of originalMeshes.current.entries()){
+     const mesh=root.children[meshIndex];
+     if(!(mesh instanceof THREE.Mesh))throw new Error('Zmieniła się kolejność meshów podglądu.');
+     const position=mesh.geometry.getAttribute('position');
+     if(!position || position.count*3!==original.vertices.length)
+       throw new Error('Zmieniła się topologia lub liczba wierzchołków — nie można zapisać YFT.');
+     for(let vertexIndex=0;vertexIndex<position.count;vertexIndex++){
+       const index=vertexIndex*3;
+       const x=position.getX(vertexIndex);
+       const y=position.getY(vertexIndex);
+       const z=position.getZ(vertexIndex);
+       if(Math.abs(x-original.vertices[index])>1e-5 ||
+          Math.abs(y-original.vertices[index+1])>1e-5 ||
+          Math.abs(z-original.vertices[index+2])>1e-5){
+          patches.push({meshIndex,vertexIndex,x,y:-z,z:y});
+          if(patches.length>20000)throw new Error('Przekroczono limit 20000 zmienionych wierzchołków.');
+       }
+     }
+   }
+   return patches;
+ };
+ const saveNativeYft=async()=>{
+   if(!onUpdateYft||!filename||busy)return;
+   const source=files.find(f=>f.name===filename);if(!source)return;
+   setBusy(true);setMessage('Próbuję zapisać zmiany w oryginalnym RSC7 YFT bez zmiany układu kości, kolizji i LOD...');
+   try{
+     const patches=collectPatches();
+     if(!patches.length){setEdited(false);setMessage('Brak zmienionych wierzchołków do zapisania.');return;}
+     const bytes=await invoke<number[]>('yft_patch_vertices',{bytes:Array.from(source.bytes),patches});
+     const updated=Uint8Array.from(bytes);
+     onUpdateYft(filename,updated);
+     const verified=await invoke<MeshData[]>('yft_preview',{bytes:Array.from(updated)});
+     if(verified.length!==originalMeshes.current.length)throw new Error('Zmiana YFT nie przechodzi walidacji geometrii.');
+     originalMeshes.current=verified;setEdited(false);
+     setMessage('Eksperymentalny YFT zapisany do projektu ('+patches.length+' zmian). Obowiązkowy test na serwerze FiveM przed wdrożeniem.');
+   }catch(e){setMessage('Eksport YFT zablokowany: '+String(e));}
+   finally{setBusy(false);}
+ };
  const exportModel=async()=>{
    if(busy||!root.children.length)return;
    setBusy(true);setMessage('Eksportuję podgląd geometrii do GLB...');
@@ -163,7 +213,8 @@ export default function YftInspector({files}:Props){
  return <section className="yft-inspector">
    <div className="yft-heading"><div><h2>YFT Vehicle Inspector <small>PODGLĄD 3D</small></h2>
      <p>Rzeczywista geometria wyodrębniona z pliku GTA V, bez ręcznego konwertowania modelu w Blenderze.</p></div>
-     <button className="button secondary" disabled={busy||!root.children.length} onClick={()=>void exportModel()}>⇩ Eksportuj GLB z podglądu</button>
+     <div className="yft-export-buttons"><button className="button secondary" disabled={busy||!root.children.length} onClick={()=>void exportModel()}>⇩ Eksportuj GLB</button>
+       <button className="button primary" disabled={busy||!edited||!onUpdateYft} onClick={()=>void saveNativeYft()}>Zapisz YFT (eksperymentalne)</button></div>
    </div>
    <div className="yft-toolbar">
      <label>Model samochodu:
@@ -175,6 +226,7 @@ export default function YftInspector({files}:Props){
      <span>Obiekty: <strong>{stats.meshCount}</strong></span>
      <span>Trójkąty: <strong>{stats.triangles.toLocaleString('pl-PL')}</strong></span>
      <button onClick={()=>setFocus(n=>n+1)} className="button secondary">Dopasuj widok</button>
+     <label className="yft-vertex-toggle"><input type="checkbox" checked={vertexMode} onChange={event=>{setVertexMode(event.target.checked);setSelectedId(null);setSelectedVertex(null);}}/> Przesuwaj wierzchołki YFT</label>
    </div>
    <div className="yft-uv-controls">
      <label>Grupa materiału (shader ID)
@@ -198,11 +250,14 @@ export default function YftInspector({files}:Props){
      <button className="button primary" disabled={busy||shader===null||!textureName} onClick={()=>void applyTexture()}>Zobacz teksturę na modelu</button>
      <button className="button secondary" disabled={!root.children.length||busy} onClick={resetTexturePreview}>Przywróć materiały</button>
    </div>
-   <div className="yft-preview"><Viewport root={root} selectedId={null} mode="translate" focusToken={focus}
+   <div className="yft-preview"><Viewport root={root} selectedId={selectedId} vertexMode={vertexMode} selectedVertexIndex={selectedVertex} geometryRevision={geometryRevision} mode="translate" focusToken={focus}
      onSelect={id=>{const mesh=id?root.getObjectByProperty('uuid',id):undefined;
        if(mesh instanceof THREE.Mesh && typeof mesh.userData.shaderId==='number')selectShader(mesh.userData.shaderId);
-     }} onChange={()=>{}}/></div>
+     }}
+     onVertexSelect={(id,index)=>{setSelectedId(id);setSelectedVertex(index);}}
+     onChange={()=>{if(vertexMode){setEdited(true);setGeometryRevision(n=>n+1);}}}/></div>
+   {vertexMode&&<div className="yft-edit-banner">Zaznacz wierzchołek trójkąta i przeciągnij manipulator. Zmieniasz TYLKO współrzędne punktów, bez dodawania części ani zmiany topologii. {selectedVertex!==null?'Wierzchołek #'+selectedVertex:''}{edited?' · Niezapisane zmiany':''}</div>}
    <div className="addon-message" role="status">{busy?'Trwa przetwarzanie modelu…':message}</div>
-   <p className="texture-warning">Kliknij część samochodu w podglądzie, aby ustawić jej shader, a następnie wybierz teksturę YTD. To ręczna wizualizacja UV: nie odtwarza automatycznie powiązań materiałów GTA i może wyglądać inaczej niż w FiveM. Nie edytuje YFT ani nie zastępuje pełnego eksportera pojazdów.</p>
+   <p className="texture-warning">Kliknij część samochodu w podglądzie, aby ustawić jej shader, a następnie wybierz teksturę YTD. To ręczna wizualizacja UV: nie odtwarza automatycznie powiązań materiałów GTA i może wyglądać inaczej niż w FiveM. Zapis współrzędnych YFT jest eksperymentalny i ograniczony do istniejących wierzchołków Float3; nie obsługuje przebudowy fragmentów, zmian szkieletu, kolizji ani dodawania części. Testuj w FiveM przed instalacją na produkcji.</p>
  </section>;
 }
