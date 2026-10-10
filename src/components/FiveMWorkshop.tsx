@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import './FiveMWorkshop.css';
 import type { ChangeEvent, DragEvent } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { CLASSES, DEFAULTS, HANDLING_DEFINITIONS, PLATES, WHEELS } from '../fivem/types';
