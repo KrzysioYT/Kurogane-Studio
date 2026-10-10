@@ -45,6 +45,12 @@ export default function YftInspector({files}:Props){
  const choices=files.filter(f=>f.name.toLowerCase().endsWith('.yft')&&!f.name.toLowerCase().endsWith('_hi.yft'));
  const ytdFiles=files.filter(f=>f.name.toLowerCase().endsWith('.ytd'));
  const load=async(name:string)=>{
+   const oldTextures=new Set<THREE.Texture>();
+   for(const object of root.children){
+     if(object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial && object.material.map)
+       oldTextures.add(object.material.map);
+   }
+   for(const texture of oldTextures)texture.dispose();
    setFilename(name);clearModel(root);setStats({meshCount:0,triangles:0});setShaderIds([]);setShader(null);
    if(!name)return;
    if(!isTauri()){setMessage('Podgląd YFT wymaga aplikacji Windows Tauri.');return;}
