@@ -73,7 +73,7 @@ test('exported ZIP preserves GTA binaries and generates folder hierarchy',async(
  assert.ok((await zip.file(prefix+'fxmanifest.lua')!.async('string')).includes('VEHICLE_METADATA_FILE'));
  assert.equal(zip.file(prefix+'data/carcols.meta'),null);
 });
-test('imported ZIP maps nested stream/data files, ignores other scripts',async()=>{
+test('imported ZIP maps GTA assets, preserves scripts and rejects path traversal',async()=>{
  const zip=new JSZip();
  zip.file('resources/[cars]/mycar/stream/mycar.yft',new Uint8Array([3,4]));
  zip.file('resources/[cars]/mycar/data/handling.meta','<CHandlingDataMgr />');
@@ -84,7 +84,9 @@ test('imported ZIP maps nested stream/data files, ignores other scripts',async()
  const imported=await readAssets([file]);
  assert.equal(imported.assets.length,2);
  assert.deepEqual(imported.assets.map(a=>a.name).sort(),['data/handling.meta','stream/mycar.yft']);
- assert.equal(imported.ignored,2);
+ assert.equal(imported.ignored,1);
+ assert.equal(imported.extraFiles?.length,1);
+ assert.equal(imported.extraFiles?.[0].name,'server.lua');
  const c=inferConfig(imported.assets);
  assert.equal(c.spawn,'mycar');
  assert.equal(c.resource,'ks_mycar');
