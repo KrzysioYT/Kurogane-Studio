@@ -9,8 +9,9 @@ const TYPES:[string,string][]=[
  ['vehiclelayouts.meta','VEHICLE_LAYOUTS_FILE'],
 ];
 function upsertLine(source:string,key:string,value:string){
- const updated=source.replace(new RegExp('^\\s*'+key+'\\s+[^\\r\\n]*','mi'),key+" '"+escapeLua(value)+"'");
- return updated===source?updated.trimEnd()+"\n"+key+" '"+escapeLua(value)+"'":updated;
+ const pattern=new RegExp('^\\s*'+key+'\\s+[^\\r\\n]*','mi');
+ if(pattern.test(source))return source.replace(pattern,key+" '"+escapeLua(value)+"'");
+ return source.trimEnd()+"\n"+key+" '"+escapeLua(value)+"'";
 }
 /**
  * Keep existing scripts and custom data_file registrations.
