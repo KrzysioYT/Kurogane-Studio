@@ -41,3 +41,22 @@
 .decal-toolbar input[type=range]{width:80px;accent-color:#72bac9}
 .decal-toolbar span{color:#8aabb6;font-size:10px;margin-left:auto}
 @media(max-width:1020px){.decal-toolbar span{margin-left:0;width:100%}}
+
+/* Model Doctor v0.13: read-only scene preflight */
+.model-doctor{display:flex;flex-direction:column;gap:9px;margin:0 0 10px;padding:12px;border-radius:8px;background:#172b34;border:1px solid #446b75;color:#c5dce4}
+.model-doctor-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:11px}
+.model-doctor-head strong{font-size:13px;color:#e5f7f9}
+.model-doctor-head>span{color:#b6d0d9}
+.model-doctor-head .model-doctor-danger{color:#ffb1a1;font-weight:700}
+.model-doctor-head .model-doctor-ok{color:#a7dbc8;font-weight:700}
+.model-doctor-head button{margin-left:auto;border:1px solid #567480;border-radius:5px;padding:6px 10px;background:#253d48;color:#d1eaf0;cursor:pointer}
+.model-doctor-list{display:flex;flex-direction:column;max-height:180px;overflow:auto;gap:5px}
+.model-doctor-issue{display:flex;align-items:flex-start;gap:10px;text-align:left;border:1px solid #38545c;background:#1d333d;color:#c1dae2;padding:7px 9px;border-radius:5px;font-size:11px;cursor:pointer}
+.model-doctor-issue>strong{font-size:10px;min-width:45px}
+.model-doctor-issue.error>strong{color:#ff958d}
+.model-doctor-issue.warning>strong{color:#e2bb82}
+.model-doctor-issue.info>strong{color:#8cc8d4}
+.model-doctor-issue:hover:not(:disabled){background:#2a4f5b}
+.model-doctor-issue:disabled{cursor:default;opacity:.75}
+.model-doctor-stale{color:#e7ba80;font-size:11px;margin:0}
+.model-doctor>small{color:#91aebb;line-height:1.5}
