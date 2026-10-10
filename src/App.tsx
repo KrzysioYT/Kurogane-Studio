@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import * as THREE from 'three';
 import Viewport from './components/Viewport';
+import FiveMWorkshop from './components/FiveMWorkshop';
 import type { TransformMode } from './components/Viewport';
 import { tools, sections } from './catalog';
 import { clearModel, createDemoCar, prepareModel } from './lib/demo';
@@ -55,6 +56,7 @@ export default function App() {
   const [modelName, setModelName] = useState('Kurogane Concept');
   const [status, setStatus] = useState('Gotowy do pracy. Model demonstracyjny jest otwarty.');
   const [busy, setBusy] = useState(false);
+  const [fiveMMode, setFiveMMode] = useState(false);
   const [leftTab, setLeftTab] = useState<'tools' | 'hierarchy'>('tools');
   const [dragActive, setDragActive] = useState(false);
 
@@ -205,10 +207,11 @@ export default function App() {
   const toolList = tools.filter(tool => (tool.name + ' ' + tool.description).toLowerCase().includes(search.toLowerCase()));
 
   return <div className="shell" onDragOver={event => { event.preventDefault(); setDragActive(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragActive(false); }} onDrop={onDrop}>
-    <header className="topbar">
+    <header className={fiveMMode ? "topbar fivem-topbar" : "topbar"}>
       <Brand />
-      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{activeTool.name}</strong><span className="edition">ALPHA 0.1.0</span></div>
+      <div className="top-crumbs"><span>WORKSPACE</span><b>/</b><strong>{fiveMMode ? 'FiveM Add-on Builder' : activeTool.name}</strong><span className="edition">ALPHA 0.2.0</span></div>
       <div className="header-actions">
+        <button className={"button workspace-toggle " + (fiveMMode ? "current" : "")} onClick={() => setFiveMMode(current => !current)}>{fiveMMode ? "← Edytor 3D" : "🚘 FiveM Add-on"}</button>
         <span className="local-pill"><span className="online-dot" /> LOCAL / WINDOWS</span>
         <button className="button ghost" onClick={loadDemo} disabled={busy}>↺ <span>Auto demonstracyjne</span></button>
         <button className="button secondary" onClick={() => fileRef.current?.click()} disabled={busy}>↥ <span>Importuj model</span></button>
@@ -216,7 +219,7 @@ export default function App() {
         <input type="file" hidden ref={fileRef} accept=".glb,.gltf,.obj" onChange={event => void fileChanged(event)} />
       </div>
     </header>
-    <div className="main-grid">
+    <div className={fiveMMode ? "main-grid addon-mode" : "main-grid"}>
       <aside className="sidebar">
         <div className="sidebar-tabs">
           <button className={leftTab === 'tools' ? 'tab active' : 'tab'} onClick={() => setLeftTab('tools')}>Narzędzia</button>
@@ -247,8 +250,8 @@ export default function App() {
           {!parts.length && <p className="empty-hint">Zaimportuj model, by zobaczyć jego części.</p>}
         </div>}
       </aside>
-      <main className="workspace">
-        {activeTool.stage === 'mvp' ? <>
+      <main className={fiveMMode ? "addon-workspace" : "workspace"}>
+        {fiveMMode ? <FiveMWorkshop /> : activeTool.stage === 'mvp' ? <>
           <div className="workspace-header">
             <div><div className="eyebrow">EDYTOR PRZESTRZENI 3D / BETA</div><h1>{modelName}</h1><p>Wybierz część pojazdu i edytuj geometrię, położenie lub materiał.</p></div>
             <div className="viewport-options"><span className="chip">◈ Perspektywa</span><button className="small-button" onClick={() => setFocusToken(t => t + 1)} title="Dopasuj widok (F)">⊡ Dopasuj</button></div>
@@ -303,6 +306,6 @@ export default function App() {
         <div className="inspector-note"><div className="section-title">INFORMACJE</div><div className="stat-row"><span>Elementy 3D</span><strong>{meshes}</strong></div><div className="stat-row"><span>Format wyjścia</span><strong>GLB</strong></div><div className="stat-row"><span>Format GTA V</span><strong className="warning">W planie</strong></div></div>
       </aside>
     </div>
-    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.1.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
+    <footer className="statusbar"><span className="status-left"><b>●</b> {status}</span><span className="status-right">KUROGANE STUDIO · 0.2.0 ALPHA <span>•</span> LOCAL-FIRST</span></footer>
   </div>;
 }
