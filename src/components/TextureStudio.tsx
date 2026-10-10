@@ -1,12 +1,12 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent } from 'react';
 import type { VehicleAsset } from '../fivem/types';
 import './TextureStudio.css';
 
 type Entry = { name:string;width:number;height:number;format:string;levels:number };
 type PaintTool = 'brush'|'eraser'|'text'|'logo';
-type Props = { files:VehicleAsset[];onUpdate:(filename:string,bytes:Uint8Array)=>void };
+type Props = { files:VehicleAsset[];onUpdate:(filename:string,bytes:Uint8Array)=>void;onDirtyChange:(dirty:boolean)=>void };
 const dataURI = (base64:string)=>'data:image/png;base64,'+base64;
 const bytesOf=(buffer:Uint8Array)=>Array.from(buffer);
 const canvasPNG=(canvas:HTMLCanvasElement)=>new Promise<Uint8Array>((resolve,reject)=>{
@@ -18,7 +18,7 @@ const canvasPNG=(canvas:HTMLCanvasElement)=>new Promise<Uint8Array>((resolve,rej
 const imageFrom=(src:string)=>new Promise<HTMLImageElement>((resolve,reject)=>{
  const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error('Nie można wczytać obrazu PNG'));image.src=src;
 });
-export default function TextureStudio({files,onUpdate}:Props){
+export default function TextureStudio({files,onUpdate,onDirtyChange}:Props){
  const [filename,setFilename]=useState('');
  const [textures,setTextures]=useState<Entry[]>([]);
  const [selected,setSelected]=useState('');
@@ -37,7 +37,6 @@ export default function TextureStudio({files,onUpdate}:Props){
  const canvas=useRef<HTMLCanvasElement>(null);
  const drawing=useRef(false);
  const logoRef=useRef<HTMLInputElement>(null);
- const activeYtd=files.find(f=>f.name===filename);
  const lastSelection=useRef(0);
  const entries=files.filter(f=>f.name.toLowerCase().endsWith('.ytd'));
 
@@ -163,6 +162,7 @@ export default function TextureStudio({files,onUpdate}:Props){
  };
  // Clearing stale paint state on unmount. The source ZIP stays untouched until export.
  useEffect(()=>()=>{lastSelection.current++;},[]);
+ useEffect(()=>onDirtyChange(dirty),[dirty,onDirtyChange]);
  const current=textures.find(t=>t.name===selected);
  return <section className="texture-studio">
    <div className="texture-heading"><div><h2>Retexture & Logo Studio <small>NATYWNE YTD</small></h2>
