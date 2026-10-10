@@ -4,13 +4,14 @@ import * as THREE from 'three';
 import Viewport from './Viewport';
 import type {ViewPreset} from './Viewport';
 import {collectYftPatches,YftPositionHistory} from '../lib/yft-edit';
+import {uvToPixel,stampDimensions} from '../fivem/paint-uv';
 import { clearModel } from '../lib/demo';
 import { exportGLB, saveGLB } from '../lib/io';
 import type { VehicleAsset } from '../fivem/types';
 import './YftInspector.css';
 
 type MeshData={name:string;vertices:number[];normals:number[];uv:number[];indices:number[];shaderId:number;suggestedTexture?:string|null};
-type Props={files:VehicleAsset[];onUpdateYft?:(name:string,bytes:Uint8Array)=>void;onDirtyChange?:(dirty:boolean)=>void};
+type Props={files:VehicleAsset[];onUpdateYft?:(name:string,bytes:Uint8Array)=>void;onUpdateYtd?:(name:string,bytes:Uint8Array)=>void;onDirtyChange?:(dirty:boolean)=>void};
 type TextureEntry={name:string;width:number;height:number;format:string;levels:number};
 function fromMeshes(data:MeshData[],root:THREE.Group){
  clearModel(root);
@@ -33,7 +34,7 @@ function fromMeshes(data:MeshData[],root:THREE.Group){
    root.add(mesh);
  }
 }
-export default function YftInspector({files,onUpdateYft,onDirtyChange}:Props){
+export default function YftInspector({files,onUpdateYft,onUpdateYtd,onDirtyChange}:Props){
  const [filename,setFilename]=useState('');
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState('Wybierz plik YFT z importowanego addonu.');
@@ -54,6 +55,12 @@ export default function YftInspector({files,onUpdateYft,onDirtyChange}:Props){
  const [textureFile,setTextureFile]=useState('');
  const [textureName,setTextureName]=useState('');
  const [textureEntries,setTextureEntries]=useState<TextureEntry[]>([]);
+ const [paintMode,setPaintMode]=useState(false);
+ const [stampWidth,setStampWidth]=useState(256);
+ const [stampAngle,setStampAngle]=useState(0);
+ const [logoReady,setLogoReady]=useState('');
+ const logoImage=useRef<HTMLImageElement|null>(null);
+ const logoInputRef=useRef<HTMLInputElement>(null);
  const root=useMemo(()=>new THREE.Group(),[]);
  const choices=files.filter(f=>f.name.toLowerCase().endsWith('.yft')&&!f.name.toLowerCase().endsWith('_hi.yft'));
  const ytdFiles=files.filter(f=>f.name.toLowerCase().endsWith('.ytd'));
@@ -187,6 +194,71 @@ export default function YftInspector({files,onUpdateYft,onDirtyChange}:Props){
    }catch(e){setMessage('Eksport YFT zablokowany: '+String(e));}
    finally{setBusy(false);}
  };
+ const loadStamp=async(file:File)=>{
+   if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>8*1024*1024){
+     setMessage('Logo musi być PNG/JPG/WebP o rozmiarze do 8 MiB.');return;
+   }
+   const url=URL.createObjectURL(file);
+   try{
+     const img=new Image();
+     await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=()=>reject(new Error('Błąd odczytu obrazu'));img.src=url;});
+     if(img.naturalWidth>4096||img.naturalHeight>4096||!img.naturalWidth)
+       throw new Error('Maksymalny rozmiar logo to 4096×4096 px.');
+     logoImage.current=img;setLogoReady(file.name);
+     setMessage('Logo wczytane. Wybierz YTD, teksturę i shader, potem włącz malowanie.');
+   }catch(e){setMessage('Nie można wczytać logo: '+String(e));}
+   finally{URL.revokeObjectURL(url);}
+ };
+ const stampOnYtd=async(mesh:THREE.Mesh,uv:THREE.Vector2|null)=>{
+   if(!paintMode || busy || !onUpdateYtd)return;
+   const img=logoImage.current;
+   if(!img||!textureFile||!textureName||shader===null){setMessage('Najpierw wybierz logo, plik YTD, teksturę i shader.');return;}
+   if(mesh.userData.shaderId!==shader){setMessage('Kliknięty mesh należy do innego shadera. Zmień grupę materiału przed malowaniem.');return;}
+   if(!uv){setMessage('Ten mesh nie ma UV; nie można nanieść logo na teksturę GTA.');return;}
+   const file=files.find(f=>f.name===textureFile);if(!file)return;
+   setBusy(true);setMessage('Wypalam logo na teksturze YTD w punkcie UV...');
+   try{
+     const base64=await invoke<string>('ytd_png',{bytes:Array.from(file.bytes),textureName});
+     const sourceImage=new Image();
+     await new Promise<void>((resolve,reject)=>{
+       sourceImage.onload=()=>resolve();
+       sourceImage.onerror=()=>reject(new Error('Nie można otworzyć oryginalnej tekstury.'));
+       sourceImage.src='data:image/png;base64,'+base64;
+     });
+     const canvas=document.createElement('canvas');
+     canvas.width=sourceImage.naturalWidth;canvas.height=sourceImage.naturalHeight;
+     const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Brak kontekstu Canvas 2D.');
+     ctx.drawImage(sourceImage,0,0);
+     const px=uvToPixel(uv.x,uv.y,canvas.width,canvas.height);
+     const dimension=stampDimensions(stampWidth,img.naturalWidth,img.naturalHeight);
+     if(!Number.isFinite(stampAngle)||Math.abs(stampAngle)>3600)throw new Error('Nieprawidłowy obrót logo.');
+     ctx.save();ctx.translate(px.x,px.y);ctx.rotate(THREE.MathUtils.degToRad(stampAngle));
+     ctx.drawImage(img,-dimension.width/2,-dimension.height/2,dimension.width,dimension.height);
+     ctx.restore();
+     const png=await new Promise<Uint8Array>((resolve,reject)=>{
+       canvas.toBlob(async blob=>{
+         if(!blob){reject(new Error('Nie można wygenerować tekstury PNG.'));return;}
+         resolve(new Uint8Array(await blob.arrayBuffer()));
+       },'image/png');
+     });
+     const encoded=await invoke<number[]>('ytd_replace_png',{
+       bytes:Array.from(file.bytes),textureName,pngBytes:Array.from(png)
+     });
+     // The native YTD writer validates the dictionary and preserves all other textures.
+     onUpdateYtd(textureFile,Uint8Array.from(encoded));
+     const tex=new THREE.CanvasTexture(canvas);
+     tex.flipY=true;tex.colorSpace=THREE.SRGBColorSpace;tex.needsUpdate=true;
+     for(const obj of root.children){
+       if(!(obj instanceof THREE.Mesh)||obj.userData.shaderId!==shader)continue;
+       const mat=obj.material;
+       if(!(mat instanceof THREE.MeshStandardMaterial))continue;
+       mat.map?.dispose();mat.map=tex;mat.color.set('#ffffff');mat.needsUpdate=true;
+     }
+     setPaintMode(false);
+     setMessage('Zapisano logo w prawdziwym '+textureFile+' → '+textureName+'. Eksportuj addon ZIP, aby zachować zmianę.');
+   }catch(e){setMessage('Nie zapisano logo do YTD: '+String(e));}
+   finally{setBusy(false);}
+ };
  const exportModel=async()=>{
    if(busy||!root.children.length)return;
    setBusy(true);setMessage('Eksportuję podgląd geometrii do GLB...');
@@ -245,7 +317,15 @@ export default function YftInspector({files,onUpdateYft,onDirtyChange}:Props){
      <button className="button primary" disabled={busy||shader===null||!textureName} onClick={()=>void applyTexture()}>Zobacz teksturę na modelu</button>
      <button className="button secondary" disabled={!root.children.length||busy} onClick={resetTexturePreview}>Przywróć materiały</button>
    </div>
-   <div className="yft-preview"><Viewport root={root} selectedId={selectedId} vertexMode={vertexMode} selectedVertexIndex={selectedVertex} geometryRevision={geometryRevision} mode="translate" focusToken={focus}
+   <div className="yft-paint-panel">
+     <button className="button secondary" onClick={()=>logoInputRef.current?.click()} disabled={busy}>Wczytaj logo do YTD</button>
+     <input ref={logoInputRef} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(file)void loadStamp(file);}}/>
+     <span>{logoReady||'Brak logo'}</span>
+     <label>Szerokość w teksturze (px) <input type="number" min="8" max="2048" step="8" value={stampWidth} onChange={e=>setStampWidth(Number(e.target.value))}/></label>
+     <label>Obrót (°) <input type="number" min="-3600" max="3600" step="15" value={stampAngle} onChange={e=>setStampAngle(Number(e.target.value))}/></label>
+     <button className={paintMode?'button primary':'button secondary'} disabled={busy||!logoReady||!textureName||!onUpdateYtd} onClick={()=>{setPaintMode(v=>!v);setVertexMode(false);setSelectedId(null);setSelectedVertex(null);}}>{paintMode?'Malowanie włączone — kliknij karoserię':'Maluj logo na YFT → YTD'}</button>
+   </div>
+   <div className="yft-preview"><Viewport root={root} surfaceMode={paintMode} onSurfaceHit={(mesh,_point,_normal,uv)=>void stampOnYtd(mesh,uv)} selectedId={selectedId} vertexMode={vertexMode} selectedVertexIndex={selectedVertex} geometryRevision={geometryRevision} mode="translate" focusToken={focus}
      onSelect={id=>{const mesh=id?root.getObjectByProperty('uuid',id):undefined;
        if(mesh instanceof THREE.Mesh && typeof mesh.userData.shaderId==='number')selectShader(mesh.userData.shaderId);
      }}
