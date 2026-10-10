@@ -166,3 +166,18 @@ test('existing manifest retains script declarations and updates author/version',
  assert.match(merged,/version '1\.0\.0'/);
  assert.match(merged,/data_file 'HANDLING_FILE' 'data\/handling\.meta'/);
 });
+
+
+test('modified YFT is exported byte-for-byte without mutating original addon files',async()=>{
+ const {config,files}=setup();
+ const original=Uint8Array.from(files[0].bytes);
+ const patched=new Uint8Array([82,83,67,55,0,0,0,0,1,2,3,4,5,6,7,8,39,0,0,0]);
+ const altered=files.map(file=>file.name==='stream/ks_police.yft'
+   ?{...file,bytes:Uint8Array.from(patched),source:'experimental-YFT'}:file);
+ const zip=await JSZip.loadAsync(await createAddonZip(altered,config));
+ const prefix=config.resource+'/stream/';
+ assert.deepEqual(await zip.file(prefix+'ks_police.yft')!.async('uint8array'),patched);
+ assert.deepEqual(await zip.file(prefix+'ks_police_hi.yft')!.async('uint8array'),files[1].bytes);
+ assert.deepEqual(await zip.file(prefix+'ks_police.ytd')!.async('uint8array'),files[2].bytes);
+ assert.deepEqual(files[0].bytes,original,'source YFT must remain unchanged');
+});
