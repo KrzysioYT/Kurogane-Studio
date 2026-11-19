@@ -1,0 +1,38 @@
+{
+  "productName": "Kurogane Studio",
+  "version": "0.16.0",
+  "identifier": "dev.krzysioyt.kuroganestudio",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Kurogane Studio — FiveM Vehicle Workshop",
+        "width": 1480,
+        "height": 900,
+        "minWidth": 1060,
+        "minHeight": 640,
+        "backgroundColor": "#10151b"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "shortDescription": "Kurogane Studio — edytor 3D na Windows",
+    "category": "GraphicsAndDesign"
+  }
+}

@@ -1,0 +1,23 @@
+.yft-inspector{display:flex;flex-direction:column;gap:15px;border:1px solid #2d4b5b;background:#151f29;border-radius:10px;padding:20px}
+.yft-heading{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.yft-heading h2{font-size:19px;color:#dff0f5;margin:0 0 9px}.yft-heading h2 small{font-size:9px;color:#83c7d1;letter-spacing:.5px;border:1px solid #3c7484;padding:4px 6px;border-radius:4px}
+.yft-heading p{font-size:12px;color:#93afbe;line-height:1.6;margin:0}
+.yft-toolbar{display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:#192b37;border:1px solid #344d5e;border-radius:6px;padding:10px 13px;font-size:11px;color:#9ab9c5}
+.yft-toolbar label{display:flex;align-items:center;gap:8px}.yft-toolbar select{min-width:190px;max-width:350px;padding:8px;background:#213746;border:1px solid #3f6376;color:#e0f0f3;border-radius:5px;font-size:11px}
+.yft-toolbar strong{color:#c8e6eb}.yft-preview{height:490px;min-height:320px;border-radius:7px;border:1px solid #375064;overflow:hidden;background:#141d29}
+.yft-preview .viewport{height:100%;width:100%}
+@media(max-width:1000px){.yft-heading{flex-wrap:wrap}.yft-toolbar label{width:100%}.yft-toolbar select{max-width:none;flex:1}}
+
+.yft-uv-controls{display:flex;gap:9px;align-items:end;flex-wrap:wrap;padding:13px;background:#192a35;border:1px solid #344e5f;border-radius:6px}
+.yft-uv-controls label{display:flex;flex:1;min-width:175px;flex-direction:column;gap:7px;color:#a1b8c7;font-size:11px}
+.yft-uv-controls select{width:100%;min-width:0;background:#203846;color:#e2f0f2;border:1px solid #3e6577;border-radius:5px;padding:9px;font-size:11px}
+.yft-uv-controls button{white-space:nowrap}
+@media(max-width:1000px){.yft-uv-controls label{min-width:100%}}
+
+.yft-shader-hint{font-size:11px;color:#8ec4c9;border:1px solid #3b626b;background:#1d3a43;padding:8px 10px;border-radius:5px;overflow-wrap:anywhere;max-width:230px}
+
+.yft-paint-panel{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:11px 13px;border:1px solid #4c7480;border-radius:7px;background:#1c333f;color:#bcd6dc;font-size:11px}
+.yft-paint-panel>span{font-size:11px;color:#95c0c5;overflow-wrap:anywhere}
+.yft-paint-panel label{display:flex;align-items:center;gap:6px}
+.yft-paint-panel input{background:#14252e;border:1px solid #507789;color:#e5f5f7;padding:7px;border-radius:5px;width:85px}
+.yft-paint-panel .button.primary{border-color:#70c9b5}
